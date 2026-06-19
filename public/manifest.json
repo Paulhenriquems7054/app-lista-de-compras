@@ -1,7 +1,7 @@
 {
-  "name": "Lista de Compras IA",
-  "short_name": "Lista IA",
-  "description": "Gerencie suas compras de forma inteligente com assistente de IA",
+  "name": "Lista de Compras",
+  "short_name": "Lista de Compras",
+  "description": "Gerencie suas compras de forma prática e organizada",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a2e",
