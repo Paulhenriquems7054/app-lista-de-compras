@@ -19,6 +19,7 @@ import { ShoppingMode } from './components/ShoppingMode';
 import { ConsumptionDashboard } from './components/ConsumptionDashboard';
 import { useConsumptionStats } from './hooks/useConsumptionStats';
 import { AuthScreen } from './components/auth/AuthScreen';
+import { VoiceCommandButton } from './components/VoiceCommandButton';
 
 const App: React.FC = () => {
     const { user, isLoading, isAuthenticated } = useSession();
