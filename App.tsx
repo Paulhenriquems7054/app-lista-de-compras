@@ -755,6 +755,9 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                     items,
                     customCategories,
                     addItem,
+                    updateItem: (id, changes) => setItems(prev =>
+                        prev.map(i => i.id === id ? { ...i, ...changes } : i)
+                    ),
                     deleteItem,
                     toggleItem,
                     addCustomCategory: (cat) => setCustomCategories(prev => [...prev, cat]),
@@ -766,7 +769,6 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                         ));
                         setCustomCategories(prev => prev.filter(c => c.id !== id));
                     },
-                    currentCategory: Category.OUTROS,
                 }}
             />
         </div>

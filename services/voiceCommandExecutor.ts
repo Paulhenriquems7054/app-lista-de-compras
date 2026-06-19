@@ -1,21 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// voiceCommandExecutor.ts
-// Executa ações reais no estado do app baseadas no VoiceCommand parseado.
+// voiceCommandExecutor.ts  v2
+// Executa ações reais no estado do app com:
+//   - Anti-duplicidade (busca item existente antes de criar)
+//   - Atualização de item existente (quantidade)
+//   - Categorização automática via catálogo
+//   - Logs estruturados
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { VoiceCommand } from './voiceCommandParser';
+import { ParsedCommand } from './voiceCommandParser';
 import { Item, Category, CustomCategory } from '../types';
+
+// Re-exportar VoiceCommand como alias para compatibilidade com VoiceCommandButton
+export type { ParsedCommand as VoiceCommand };
 
 export interface ExecutorContext {
   items: Item[];
   customCategories: CustomCategory[];
   addItem: (item: Item) => void;
+  updateItem: (id: string, changes: Partial<Item>) => void;
   deleteItem: (id: string) => void;
   toggleItem: (id: string) => void;
   addCustomCategory: (cat: CustomCategory) => void;
   removeCustomCategory: (id: string, moveItemsToOthers: () => void) => void;
-  /** Categoria ativa no momento (para criar item nela). Fallback: OUTROS */
-  currentCategory?: Category | string;
 }
 
 export interface ExecutorResult {
@@ -23,33 +29,37 @@ export interface ExecutorResult {
   message: string;
 }
 
-// ─── Normalização fuzzy ───────────────────────────────────────────────────────
+// ─── Normalização para busca fuzzy ───────────────────────────────────────────
 
 function normalize(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 }
 
-/** Busca item pelo nome — exato primeiro, depois por inclusão */
-function findItem(items: Item[], entity: string): Item | undefined {
-  const v = normalize(entity);
+/**
+ * Busca item existente por nome.
+ * Ordem: exato → inclusão → produto contém nome → nome contém produto
+ */
+function findItem(items: Item[], productName: string): Item | undefined {
+  const v = normalize(productName);
   return (
     items.find(i => normalize(i.nome) === v) ??
-    items.find(i => normalize(i.nome).includes(v) || v.includes(normalize(i.nome)))
+    items.find(i => normalize(i.nome).includes(v)) ??
+    items.find(i => v.includes(normalize(i.nome)))
   );
 }
 
 /** Busca categoria fixa ou personalizada pelo nome */
 function findCategory(
-  entity: string,
+  name: string,
   customCategories: CustomCategory[],
 ): { type: 'fixed'; name: Category } | { type: 'custom'; cat: CustomCategory } | null {
-  const v = normalize(entity);
+  const v = normalize(name);
 
   for (const cat of Object.values(Category)) {
     const nc = normalize(cat);
@@ -68,133 +78,185 @@ function findCategory(
   return null;
 }
 
-/** Log de diagnóstico com ação executada */
-function logAction(cmd: VoiceCommand, action: string): void {
+/** Formata quantidade para exibição */
+function fmtQty(quantity: number | null, unit: string | null): string {
+  if (!quantity) return '1 un';
+  return `${quantity} ${unit ?? 'un'}`;
+}
+
+/** Log estruturado */
+function log(cmd: ParsedCommand, result: string): void {
   console.log(
-    `[Voz] Texto: "${cmd.rawText}" | Intent: ${cmd.intent} | Entity: "${cmd.entity}" | Action: ${action}`
+    `[VOICE]\n` +
+    `  Texto:     ${cmd.rawText}\n` +
+    `  Action:    ${cmd.action}\n` +
+    `  Product:   ${cmd.product ?? '-'}\n` +
+    `  Quantity:  ${cmd.quantity ?? '-'}\n` +
+    `  Unit:      ${cmd.unit ?? '-'}\n` +
+    `  Category:  ${cmd.category ?? '-'}\n` +
+    `  Result:    ${result}`
   );
 }
 
 // ─── Executor principal ───────────────────────────────────────────────────────
 
 export function executeVoiceCommand(
-  cmd: VoiceCommand,
+  cmd: ParsedCommand,
   ctx: ExecutorContext,
 ): ExecutorResult {
 
-  // entity e value são aliases — usar entity como fonte primária
-  const entity = (cmd.entity || cmd.value || '').trim();
-
   switch (cmd.action) {
 
-    // ── Criar item ────────────────────────────────────────────────────────────
-    case 'create_item': {
-      if (!entity) {
-        logAction(cmd, 'Erro: entidade vazia');
-        return { success: false, message: 'Nome do item não informado.' };
+    // ── Adicionar ou atualizar item ───────────────────────────────────────────
+    case 'add_or_update_item': {
+      if (!cmd.product) {
+        log(cmd, 'Erro: produto vazio');
+        return { success: false, message: 'Nome do produto não informado.' };
       }
 
-      const nomeFormatado = entity.charAt(0).toUpperCase() + entity.slice(1);
+      const quantidadeStr = fmtQty(cmd.quantity, cmd.unit);
+      const categoria     = cmd.category ?? Category.OUTROS;
 
+      // ── Anti-duplicidade: verificar se item já existe ─────────────────────
+      const existing = findItem(ctx.items, cmd.product);
+
+      if (existing) {
+        // Item encontrado → atualizar quantidade
+        ctx.updateItem(existing.id, { quantidade: quantidadeStr });
+
+        const msg = `✅ "${existing.nome}" atualizado. Quantidade: ${quantidadeStr}.`;
+        log(cmd, `Item atualizado: "${existing.nome}" → ${quantidadeStr}`);
+        return { success: true, message: msg };
+      }
+
+      // Item não existe → criar novo
       const newItem: Item = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        nome: nomeFormatado,
-        quantidade: '1',
-        categoria: (ctx.currentCategory as Category) ?? Category.OUTROS,
-        comprado: false,
-        frequencia: 1,
+        id:           `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        nome:         cmd.product,
+        quantidade:   quantidadeStr,
+        categoria,
+        comprado:     false,
+        frequencia:   1,
         ultima_compra: new Date().toISOString(),
       };
 
       ctx.addItem(newItem);
-      logAction(cmd, `Item criado: "${nomeFormatado}"`);
-      return { success: true, message: `✅ Item "${nomeFormatado}" adicionado.` };
+
+      const msg = `✅ "${cmd.product}" adicionado em ${categoria}. Quantidade: ${quantidadeStr}.`;
+      log(cmd, `Item criado: "${cmd.product}" | Cat: ${categoria} | Qty: ${quantidadeStr}`);
+      return { success: true, message: msg };
     }
 
     // ── Remover item ──────────────────────────────────────────────────────────
     case 'remove_item': {
-      const found = findItem(ctx.items, entity);
-      if (!found) {
-        logAction(cmd, `Erro: item "${entity}" não encontrado`);
-        return { success: false, message: `❌ Item "${entity}" não encontrado.` };
+      if (!cmd.product) {
+        log(cmd, 'Erro: produto vazio');
+        return { success: false, message: 'Nome do produto não informado.' };
       }
+
+      const found = findItem(ctx.items, cmd.product);
+      if (!found) {
+        log(cmd, `Não encontrado: "${cmd.product}"`);
+        return { success: false, message: `❌ Item "${cmd.product}" não encontrado.` };
+      }
+
       ctx.deleteItem(found.id);
-      logAction(cmd, `Item removido: "${found.nome}"`);
-      return { success: true, message: `🗑️ Item "${found.nome}" removido.` };
+      log(cmd, `Removido: "${found.nome}"`);
+      return { success: true, message: `🗑️ "${found.nome}" removido da lista.` };
     }
 
     // ── Marcar como comprado ──────────────────────────────────────────────────
     case 'mark_purchased': {
-      const found = findItem(ctx.items, entity);
-      if (!found) {
-        logAction(cmd, `Erro: item "${entity}" não encontrado`);
-        return { success: false, message: `❌ Item "${entity}" não encontrado.` };
+      if (!cmd.product) {
+        log(cmd, 'Erro: produto vazio');
+        return { success: false, message: 'Nome do produto não informado.' };
       }
+
+      const found = findItem(ctx.items, cmd.product);
+      if (!found) {
+        // Item não existe → criar e já marcar como comprado
+        const categoria = cmd.category ?? Category.OUTROS;
+        const newItem: Item = {
+          id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          nome:          cmd.product,
+          quantidade:    fmtQty(cmd.quantity, cmd.unit),
+          categoria,
+          comprado:      true,
+          frequencia:    1,
+          ultima_compra: new Date().toISOString(),
+        };
+        ctx.addItem(newItem);
+        log(cmd, `Criado e marcado como comprado: "${cmd.product}"`);
+        return { success: true, message: `✔️ "${cmd.product}" adicionado e marcado como comprado.` };
+      }
+
       if (found.comprado) {
-        logAction(cmd, `Info: "${found.nome}" já estava comprado`);
+        log(cmd, `Já estava comprado: "${found.nome}"`);
         return { success: false, message: `ℹ️ "${found.nome}" já está marcado como comprado.` };
       }
+
       ctx.toggleItem(found.id);
-      logAction(cmd, `Item marcado como comprado: "${found.nome}"`);
+      log(cmd, `Marcado como comprado: "${found.nome}"`);
       return { success: true, message: `✔️ "${found.nome}" marcado como comprado.` };
     }
 
     // ── Criar categoria ───────────────────────────────────────────────────────
     case 'create_category': {
-      if (!entity) {
-        logAction(cmd, 'Erro: entidade vazia');
+      const nome = (cmd.product ?? cmd.entity ?? '').trim();
+      if (!nome) {
+        log(cmd, 'Erro: nome da categoria vazio');
         return { success: false, message: 'Nome da categoria não informado.' };
       }
 
-      const nomeFormatado = entity.charAt(0).toUpperCase() + entity.slice(1);
-
-      const exists = findCategory(entity, ctx.customCategories);
+      const exists = findCategory(nome, ctx.customCategories);
       if (exists) {
         const existingName = exists.type === 'fixed' ? exists.name : exists.cat.name;
-        logAction(cmd, `Info: categoria "${existingName}" já existe`);
+        log(cmd, `Categoria já existe: "${existingName}"`);
         return { success: false, message: `ℹ️ Categoria "${existingName}" já existe.` };
       }
 
       const newCat: CustomCategory = {
-        id: `cat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: nomeFormatado,
-        icon: '🏷️',
+        id:    `cat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name:  nome.charAt(0).toUpperCase() + nome.slice(1),
+        icon:  '🏷️',
         color: 'bg-mint',
       };
 
       ctx.addCustomCategory(newCat);
-      logAction(cmd, `Categoria criada: "${nomeFormatado}"`);
-      return { success: true, message: `📁 Categoria "${nomeFormatado}" criada.` };
+      log(cmd, `Categoria criada: "${newCat.name}"`);
+      return { success: true, message: `📁 Categoria "${newCat.name}" criada.` };
     }
 
     // ── Remover categoria ─────────────────────────────────────────────────────
     case 'remove_category': {
-      const found = findCategory(entity, ctx.customCategories);
+      const nome = (cmd.product ?? cmd.entity ?? '').trim();
+      if (!nome) {
+        log(cmd, 'Erro: nome da categoria vazio');
+        return { success: false, message: 'Nome da categoria não informado.' };
+      }
 
+      const found = findCategory(nome, ctx.customCategories);
       if (!found) {
-        logAction(cmd, `Erro: categoria "${entity}" não encontrada`);
-        return { success: false, message: `❌ Categoria "${entity}" não encontrada.` };
+        log(cmd, `Categoria não encontrada: "${nome}"`);
+        return { success: false, message: `❌ Categoria "${nome}" não encontrada.` };
       }
 
       if (found.type === 'fixed') {
-        logAction(cmd, `Erro: tentativa de remover categoria padrão "${found.name}"`);
-        return {
-          success: false,
-          message: `⚠️ "${found.name}" é uma categoria padrão e não pode ser removida.`,
-        };
+        log(cmd, `Tentativa de remover categoria padrão: "${found.name}"`);
+        return { success: false, message: `⚠️ "${found.name}" é uma categoria padrão e não pode ser removida.` };
       }
 
-      ctx.removeCustomCategory(found.cat.id, () => { /* itens movidos para Outros no App */ });
-      logAction(cmd, `Categoria removida: "${found.cat.name}"`);
+      ctx.removeCustomCategory(found.cat.id, () => {});
+      log(cmd, `Categoria removida: "${found.cat.name}"`);
       return { success: true, message: `🗑️ Categoria "${found.cat.name}" removida.` };
     }
 
     // ── Desconhecido ──────────────────────────────────────────────────────────
     default:
-      logAction(cmd, 'Ação desconhecida');
+      log(cmd, 'Ação desconhecida');
       return {
         success: false,
-        message: '❓ Comando não reconhecido. Tente: "adicionar arroz", "criar categoria limpeza", "marcar pão como comprado".',
+        message: '❓ Não entendi. Tente: "comprar 5 quilos de arroz", "adicionar leite", "criar categoria pet".',
       };
   }
 }

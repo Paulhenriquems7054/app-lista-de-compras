@@ -1,371 +1,398 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// voiceCommandParser.ts  —  Motor de Intenções (sem IA)
+// voiceCommandParser.ts  —  Motor de Intenções v2 (sem IA)
 //
-// Arquitetura em 2 etapas:
-//   1. DETECTAR INTENÇÃO  — percorre padrões na ordem de prioridade
-//   2. EXTRAIR ENTIDADE   — remove os marcadores e retorna o valor limpo
+// Estrutura de saída:
+//   { action, product, quantity, unit, category, entity, rawText }
 //
-// PRIORIDADE OBRIGATÓRIA (mais específico → menos específico):
-//   1. CREATE_CATEGORY   (palavra "categoria" → sempre ganha)
-//   2. REMOVE_CATEGORY
-//   3. MARK_PURCHASED
-//   4. REMOVE_ITEM
-//   5. CREATE_ITEM
+// PIPELINE:
+//   1. Normalizar texto (minúsculas, sem acentos para comparação)
+//   2. Detectar intenção por prioridade (categoria > item)
+//   3. Extrair quantidade + unidade
+//   4. Extrair nome do produto (após remover ação, quantidade, unidade)
+//   5. Categorizar produto automaticamente via catálogo
+//   6. Retornar ParsedCommand estruturado
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Tipos públicos ──────────────────────────────────────────────────────────
+import { Category } from '../types';
+import { categorizeProduct } from './voiceProductCatalog';
+
+// ─── Tipos públicos ───────────────────────────────────────────────────────────
 
 export type VoiceIntent =
-  | 'CREATE_CATEGORY'
-  | 'REMOVE_CATEGORY'
-  | 'CREATE_ITEM'
+  | 'ADD_OR_UPDATE_ITEM'   // criar item novo ou atualizar existente
   | 'REMOVE_ITEM'
   | 'MARK_PURCHASED'
-  | 'OPEN_CATEGORY'
-  | 'SHOW_LIST'
-  | 'CLEAR_LIST'
-  | 'EDIT_ITEM'
+  | 'CREATE_CATEGORY'
+  | 'REMOVE_CATEGORY'
   | 'UNKNOWN';
 
-/** Mantido para compatibilidade com voiceCommandExecutor.ts */
+/** Mantido para compatibilidade com o executor */
 export type VoiceAction =
-  | 'create_item'
+  | 'add_or_update_item'
   | 'remove_item'
+  | 'mark_purchased'
   | 'create_category'
   | 'remove_category'
-  | 'mark_purchased'
   | 'unknown';
 
-export interface ParsedIntent {
-  intent:   VoiceIntent;
-  action:   VoiceAction;   // alias snake_case para o executor
-  entity:   string;        // entidade extraída (nome do item / categoria)
-  rawText:  string;        // texto original
+export interface ParsedCommand {
+  intent:    VoiceIntent;
+  action:    VoiceAction;
+  product:   string | null;    // nome do produto (versão original, capitalizada)
+  quantity:  number | null;    // quantidade numérica extraída
+  unit:      string | null;    // unidade normalizada (kg, l, un, etc.)
+  category:  Category | null;  // categoria detectada pelo catálogo
+  entity:    string;           // texto da entidade principal (compatibilidade)
+  value:     string;           // alias de entity (compatibilidade)
+  rawText:   string;           // texto original reconhecido
 }
 
-/** Alias para compatibilidade com código existente */
-export type VoiceCommand = ParsedIntent & { value: string };
+/** Alias para compatibilidade com VoiceCommandButton */
+export type VoiceCommand = ParsedCommand;
 
 // ─── Normalização ─────────────────────────────────────────────────────────────
 
-function normalize(text: string): string {
+/** Normaliza para comparação: minúsculas, sem acentos, sem pontuação */
+function norm(text: string): string {
   return text
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')   // remove acentos
-    .replace(/[^a-z0-9\s]/g, ' ')      // pontuação → espaço
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s.,]/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 }
 
-// ─── Tabela central de padrões ────────────────────────────────────────────────
-//
-// Cada entrada define:
-//   intent   : intenção que este padrão detecta
-//   triggers : palavras-chave obrigatórias que precisam estar presentes
-//   prefixes : prefixos que precedem a entidade (o que sobra é a entidade)
-//   suffixes : sufixos opcionais a remover da entidade
-//   requires : palavra que DEVE aparecer no texto para este padrão ser ativado
-//   excludes : se qualquer dessas palavras estiver presente, este padrão é ignorado
-//
-// ORDEM DOS PADRÕES = PRIORIDADE DE MATCHING
-
-interface IntentPattern {
-  intent:    VoiceIntent;
-  action:    VoiceAction;
-  /** Pelo menos uma dessas strings deve estar no texto normalizado */
-  triggers:  string[];
-  /** Prefixos que precedem a entidade (remover para extrair entidade) */
-  prefixes:  string[];
-  /** Sufixos a remover da entidade */
-  suffixes?: string[];
-  /** Se definido, esta palavra DEVE estar presente */
-  requires?: string;
-  /** Se qualquer dessas palavras estiver presente, pular este padrão */
-  excludes?: string[];
+/** Capitaliza primeira letra, mantém o restante como está */
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-const commandPatterns: IntentPattern[] = [
+// ─── Dicionário de unidades ───────────────────────────────────────────────────
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // PRIORIDADE 1 — CREATE_CATEGORY
-  // Regra absoluta: qualquer frase com "categoria" + verbo de criação
-  // ══════════════════════════════════════════════════════════════════════════
-  {
-    intent:   'CREATE_CATEGORY',
-    action:   'create_category',
-    requires: 'categoria',
-    excludes: ['remover', 'excluir', 'apagar', 'deletar', 'delete'],
-    triggers: ['criar', 'adicionar', 'nova', 'novo', 'crie', 'quero', 'cadastre', 'incluir', 'inserir', 'categoria'],
-    prefixes: [
-      'criar uma categoria ',
-      'criar a categoria ',
-      'criar categoria ',
-      'crie uma categoria ',
-      'crie a categoria ',
-      'crie categoria ',
-      'adicionar uma categoria ',
-      'adicionar a categoria ',
-      'adicionar categoria ',
-      'nova categoria ',
-      'novo categoria ',
-      'quero uma categoria ',
-      'quero a categoria ',
-      'quero categoria ',
-      'cadastre a categoria ',
-      'cadastre uma categoria ',
-      'cadastre categoria ',
-      'incluir categoria ',
-      'inserir categoria ',
-      'nova ',           // "nova limpeza" com requires:categoria → não bate (sem a palavra)
-      'categoria ',      // "categoria limpeza" direto
-    ],
-  },
+interface UnitEntry {
+  aliases: string[];  // palavras que o usuário pode falar
+  normalized: string; // forma canônica armazenada
+}
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // PRIORIDADE 2 — REMOVE_CATEGORY
-  // ══════════════════════════════════════════════════════════════════════════
-  {
-    intent:   'REMOVE_CATEGORY',
-    action:   'remove_category',
-    requires: 'categoria',
-    triggers: ['remover', 'excluir', 'apagar', 'deletar', 'delete'],
-    prefixes: [
-      'remover a categoria ',
-      'remover categoria ',
-      'excluir a categoria ',
-      'excluir categoria ',
-      'apagar a categoria ',
-      'apagar categoria ',
-      'deletar a categoria ',
-      'deletar categoria ',
-      'delete a categoria ',
-      'delete categoria ',
-    ],
-  },
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PRIORIDADE 3 — MARK_PURCHASED
-  // ══════════════════════════════════════════════════════════════════════════
-  {
-    intent:   'MARK_PURCHASED',
-    action:   'mark_purchased',
-    excludes: ['categoria'],
-    triggers: ['marcar', 'comprar', 'concluir', 'finalizar', 'comprado'],
-    prefixes: [
-      'marcar o item ',
-      'marcar a item ',
-      'marcar item ',
-      'marcar o ',
-      'marcar a ',
-      'marcar ',
-      'comprar o item ',
-      'comprar item ',
-      'comprar o ',
-      'comprar a ',
-      'comprar ',
-      'concluir o item ',
-      'concluir item ',
-      'concluir o ',
-      'concluir a ',
-      'concluir ',
-      'finalizar o item ',
-      'finalizar item ',
-      'finalizar o ',
-      'finalizar a ',
-      'finalizar ',
-      'item ',           // "item arroz comprado"
-    ],
-    suffixes: [' como comprado', ' comprado', ' como comprada', ' comprada'],
-  },
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PRIORIDADE 4 — REMOVE_ITEM
-  // ══════════════════════════════════════════════════════════════════════════
-  {
-    intent:   'REMOVE_ITEM',
-    action:   'remove_item',
-    excludes: ['categoria'],
-    triggers: ['remover', 'excluir', 'apagar', 'deletar', 'delete', 'tirar', 'retirar'],
-    prefixes: [
-      'remover o item ',
-      'remover a item ',
-      'remover item ',
-      'remover o ',
-      'remover a ',
-      'remover ',
-      'excluir o item ',
-      'excluir item ',
-      'excluir o ',
-      'excluir ',
-      'apagar o item ',
-      'apagar item ',
-      'apagar o ',
-      'apagar ',
-      'deletar o item ',
-      'deletar item ',
-      'deletar ',
-      'tirar o item ',
-      'tirar item ',
-      'tirar o ',
-      'tirar ',
-      'retirar o item ',
-      'retirar item ',
-      'retirar ',
-    ],
-  },
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PRIORIDADE 5 — CREATE_ITEM  (menos específico — último a ser testado)
-  // ══════════════════════════════════════════════════════════════════════════
-  {
-    intent:   'CREATE_ITEM',
-    action:   'create_item',
-    excludes: ['categoria'],
-    triggers: ['criar', 'adicionar', 'novo', 'nova', 'inserir', 'incluir', 'colocar', 'por', 'anotar'],
-    prefixes: [
-      'criar um item ',
-      'criar uma item ',
-      'criar o item ',
-      'criar a item ',
-      'criar item ',
-      'criar um ',
-      'criar uma ',
-      'criar ',
-      'adicionar um item ',
-      'adicionar uma item ',
-      'adicionar o item ',
-      'adicionar a item ',
-      'adicionar item ',
-      'adicionar um ',
-      'adicionar uma ',
-      'adicionar ',
-      'novo item ',
-      'nova item ',
-      'novo ',
-      'nova ',
-      'inserir item ',
-      'inserir ',
-      'incluir item ',
-      'incluir ',
-      'colocar item ',
-      'colocar ',
-      'por favor adicionar ',
-      'anotar ',
-      'anota ',
-    ],
-  },
+const UNITS: UnitEntry[] = [
+  { aliases: ['quilograma', 'quilogramas', 'quilo', 'quilos', 'kg', 'kilo', 'kilos'], normalized: 'kg' },
+  { aliases: ['grama', 'gramas', 'g'], normalized: 'g' },
+  { aliases: ['miligrama', 'miligramas', 'mg'], normalized: 'mg' },
+  { aliases: ['litro', 'litros', 'l'], normalized: 'l' },
+  { aliases: ['mililitro', 'mililitros', 'ml'], normalized: 'ml' },
+  { aliases: ['unidade', 'unidades', 'un', 'und', 'uni'], normalized: 'un' },
+  { aliases: ['pacote', 'pacotes'], normalized: 'pacote' },
+  { aliases: ['caixa', 'caixas'], normalized: 'caixa' },
+  { aliases: ['lata', 'latas'], normalized: 'lata' },
+  { aliases: ['garrafa', 'garrafas'], normalized: 'garrafa' },
+  { aliases: ['bandeja', 'bandejas'], normalized: 'bandeja' },
+  { aliases: ['saco', 'sacos'], normalized: 'saco' },
+  { aliases: ['dúzia', 'duzia', 'duzias'], normalized: 'dúzia' },
+  { aliases: ['fatia', 'fatias'], normalized: 'fatia' },
+  { aliases: ['pote', 'potes'], normalized: 'pote' },
+  { aliases: ['frasco', 'frascos'], normalized: 'frasco' },
+  { aliases: ['tablete', 'tabletes'], normalized: 'tablete' },
+  { aliases: ['pedaço', 'pedaco', 'pedacos', 'pedaços'], normalized: 'pedaço' },
 ];
 
-// ─── Funções auxiliares ───────────────────────────────────────────────────────
-
-/** Remove artigos e preposições do início da entidade extraída */
-function cleanEntity(entity: string): string {
-  return entity
-    .replace(/^(o|a|os|as|um|uma|uns|umas|de|do|da|dos|das|em|no|na|nos|nas)\s+/i, '')
-    .trim();
+// Índice invertido alias → unidade canônica (construído na carga)
+const UNIT_INDEX = new Map<string, string>();
+for (const entry of UNITS) {
+  for (const alias of entry.aliases) {
+    UNIT_INDEX.set(alias, entry.normalized);
+  }
 }
 
-/** Verifica se todas as excludes estão ausentes do texto */
-function noExcludes(text: string, excludes?: string[]): boolean {
-  if (!excludes || excludes.length === 0) return true;
-  return excludes.every(ex => !text.includes(ex));
+// ─── Extração de quantidade + unidade ────────────────────────────────────────
+
+interface QuantityResult {
+  quantity: number | null;
+  unit: string | null;
+  /** Posição de início no texto normalizado */
+  start: number;
+  /** Posição de fim no texto normalizado */
+  end: number;
 }
 
-/** Verifica se pelo menos um trigger está no texto */
-function hasTrigger(text: string, triggers: string[]): boolean {
-  return triggers.some(t => text.includes(t));
+/**
+ * Encontra o primeiro padrão "número [unidade]" no texto normalizado.
+ * Suporta: "5", "5,5", "0.5", "meia" → 0.5, "um" → 1, "uma" → 1
+ *
+ * Exemplos:
+ *   "comprar 5 quilos de acucar" → { quantity: 5, unit: "kg", ... }
+ *   "adicionar 1,5 litro de leite" → { quantity: 1.5, unit: "l", ... }
+ *   "comprar meio litro de oleo" → { quantity: 0.5, unit: "l", ... }
+ */
+function extractQuantity(text: string): QuantityResult | null {
+  // Palavras numéricas por extenso
+  const wordNumbers: Record<string, number> = {
+    'zero': 0, 'um': 1, 'uma': 1, 'dois': 2, 'duas': 2, 'tres': 3,
+    'quatro': 4, 'cinco': 5, 'seis': 6, 'sete': 7, 'oito': 8, 'nove': 9,
+    'dez': 10, 'doze': 12, 'quinze': 15, 'vinte': 20, 'trinta': 30,
+    'meia': 0.5, 'meio': 0.5,
+  };
+
+  const tokens = text.split(' ');
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+
+    // Tentar parsear como número (ex: "5", "1,5", "0.5")
+    const numericStr = token.replace(',', '.');
+    let qty = parseFloat(numericStr);
+
+    // Tentar número por extenso
+    if (isNaN(qty) && wordNumbers[token] !== undefined) {
+      qty = wordNumbers[token];
+    }
+
+    if (isNaN(qty) || qty < 0) continue;
+
+    // Calcular posição no texto original
+    const start = tokens.slice(0, i).join(' ').length + (i > 0 ? 1 : 0);
+
+    // Verificar se o próximo token é uma unidade
+    const nextToken = tokens[i + 1] ?? '';
+    const unitCanon = UNIT_INDEX.get(nextToken);
+
+    const end = unitCanon
+      ? start + token.length + 1 + nextToken.length
+      : start + token.length;
+
+    return {
+      quantity: qty,
+      unit: unitCanon ?? null,
+      start,
+      end,
+    };
+  }
+
+  return null;
 }
 
-// ─── Motor de intenções ───────────────────────────────────────────────────────
+// ─── Verbos de ação e seus padrões ───────────────────────────────────────────
 
-export function parseVoiceCommand(rawText: string): VoiceCommand {
-  const normalized = normalize(rawText);
+const ACTION_PREFIXES: Record<string, VoiceIntent> = {
+  // ADD_OR_UPDATE_ITEM
+  'adicionar ':       'ADD_OR_UPDATE_ITEM',
+  'comprar ':         'ADD_OR_UPDATE_ITEM',
+  'preciso de ':      'ADD_OR_UPDATE_ITEM',
+  'preciso do ':      'ADD_OR_UPDATE_ITEM',
+  'preciso da ':      'ADD_OR_UPDATE_ITEM',
+  'quero ':           'ADD_OR_UPDATE_ITEM',
+  'anotar ':          'ADD_OR_UPDATE_ITEM',
+  'anota ':           'ADD_OR_UPDATE_ITEM',
+  'botar ':           'ADD_OR_UPDATE_ITEM',
+  'colocar ':         'ADD_OR_UPDATE_ITEM',
+  'inserir ':         'ADD_OR_UPDATE_ITEM',
+  'incluir ':         'ADD_OR_UPDATE_ITEM',
+  'criar item ':      'ADD_OR_UPDATE_ITEM',
+  'criar ':           'ADD_OR_UPDATE_ITEM',
+  'novo item ':       'ADD_OR_UPDATE_ITEM',
+  'nova ':            'ADD_OR_UPDATE_ITEM',
+  'novo ':            'ADD_OR_UPDATE_ITEM',
+  'marcar ':          'MARK_PURCHASED',
+  'concluir ':        'MARK_PURCHASED',
+  'finalizar ':       'MARK_PURCHASED',
+  // REMOVE_ITEM
+  'remover ':         'REMOVE_ITEM',
+  'excluir ':         'REMOVE_ITEM',
+  'apagar ':          'REMOVE_ITEM',
+  'deletar ':         'REMOVE_ITEM',
+  'tirar ':           'REMOVE_ITEM',
+  'retirar ':         'REMOVE_ITEM',
+};
 
-  // ── REGRA ABSOLUTA: presença de "categoria" sem verbo de remoção ──────────
-  // Antes de qualquer outro teste, garantir que "criar categoria X" nunca
-  // vire CREATE_ITEM
-  const hasCategoria   = normalized.includes('categoria');
-  const hasRemoveVerb  = /\b(remover|excluir|apagar|deletar|delete)\b/.test(normalized);
+// Prefixos de categoria (verificados ANTES dos prefixos de item)
+const CATEGORY_ADD_PREFIXES = [
+  'criar categoria ', 'criar a categoria ', 'criar uma categoria ',
+  'nova categoria ', 'novo categoria ',
+  'adicionar categoria ', 'adicionar a categoria ',
+  'crie categoria ', 'crie a categoria ',
+  'cadastrar categoria ', 'cadastre categoria ',
+  'incluir categoria ', 'inserir categoria ',
+  'quero categoria ', 'quero a categoria ', 'quero uma categoria ',
+  'categoria ',
+];
 
-  // ── Percorrer padrões na ordem de prioridade ──────────────────────────────
-  for (const pattern of commandPatterns) {
+const CATEGORY_REMOVE_PREFIXES = [
+  'remover categoria ', 'remover a categoria ',
+  'excluir categoria ', 'excluir a categoria ',
+  'apagar categoria ',  'apagar a categoria ',
+  'deletar categoria ', 'deletar a categoria ',
+  'delete categoria ',
+];
 
-    // 1. Verificar requires (palavra obrigatória)
-    if (pattern.requires && !normalized.includes(pattern.requires)) continue;
+// Sufixos a remover do produto ao processar MARK_PURCHASED
+const PURCHASED_SUFFIXES = [' como comprado', ' comprado', ' como comprada', ' comprada'];
 
-    // 2. Verificar excludes (palavras proibidas)
-    if (!noExcludes(normalized, pattern.excludes)) continue;
+// ─── Artigos e preposições a remover do início do produto ─────────────────────
 
-    // 3. Para padrões de ITEM: se "categoria" está no texto, pular
-    if (
-      (pattern.intent === 'CREATE_ITEM' || pattern.intent === 'REMOVE_ITEM') &&
-      hasCategoria
-    ) continue;
+const LEADING_STOPWORDS = /^(o |a |os |as |um |uma |de |do |da |dos |das |em |no |na |nos |nas )+/;
 
-    // 4. Verificar triggers (pelo menos um deve estar presente)
-    if (!hasTrigger(normalized, pattern.triggers)) continue;
+function cleanProduct(s: string): string {
+  return s.replace(LEADING_STOPWORDS, '').trim();
+}
 
-    // 5. Tentar extrair entidade pelos prefixos (do mais longo para o mais curto)
-    const sortedPrefixes = [...pattern.prefixes].sort((a, b) => b.length - a.length);
+// ─── Funções de detecção de intenção ─────────────────────────────────────────
 
-    for (const prefix of sortedPrefixes) {
-      const normalizedPrefix = normalize(prefix);
-      if (!normalized.startsWith(normalizedPrefix)) continue;
+function detectCategoryIntent(text: string): { intent: 'CREATE_CATEGORY' | 'REMOVE_CATEGORY'; entity: string } | null {
+  // Verificar se a palavra "categoria" está presente (regra absoluta)
+  if (!text.includes('categoria')) return null;
 
-      let entity = normalized.slice(normalizedPrefix.length).trim();
-
-      // Remover sufixos conhecidos
-      if (pattern.suffixes) {
-        for (const suffix of pattern.suffixes) {
-          const ns = normalize(suffix);
-          if (entity.endsWith(ns)) {
-            entity = entity.slice(0, entity.length - ns.length).trim();
-            break;
-          }
-        }
-      }
-
-      entity = cleanEntity(entity);
-
-      if (entity.length === 0) continue; // sem entidade → tentar próximo prefixo
-
-      // ── Log de diagnóstico ────────────────────────────────────────────
-      console.log(
-        `[Voz] Texto: "${rawText}" | Intent: ${pattern.intent} | Entity: "${entity}" | Prefix: "${prefix}"`
-      );
-
-      return {
-        intent:  pattern.intent,
-        action:  pattern.action,
-        entity,
-        value:   entity,   // alias para compatibilidade
-        rawText,
-      };
+  // Tentar remover categoria
+  for (const prefix of CATEGORY_REMOVE_PREFIXES.sort((a, b) => b.length - a.length)) {
+    if (text.startsWith(norm(prefix))) {
+      const entity = cleanProduct(text.slice(norm(prefix).length).trim());
+      if (entity.length > 0) return { intent: 'REMOVE_CATEGORY', entity };
     }
   }
 
-  // ── UNKNOWN ───────────────────────────────────────────────────────────────
-  console.log(`[Voz] Texto: "${rawText}" | Intent: UNKNOWN | Nenhum padrão correspondeu`);
+  // Tentar criar categoria
+  for (const prefix of CATEGORY_ADD_PREFIXES.sort((a, b) => b.length - a.length)) {
+    if (text.startsWith(norm(prefix))) {
+      const entity = cleanProduct(text.slice(norm(prefix).length).trim());
+      if (entity.length > 0) return { intent: 'CREATE_CATEGORY', entity };
+    }
+  }
+
+  return null;
+}
+
+// ─── Parser principal ─────────────────────────────────────────────────────────
+
+export function parseVoiceCommand(rawText: string): ParsedCommand {
+  const normalized = norm(rawText);
+
+  // ── FASE 1: Detectar intenção de CATEGORIA (prioridade máxima) ────────────
+  const categoryResult = detectCategoryIntent(normalized);
+  if (categoryResult) {
+    const { intent, entity } = categoryResult;
+    const action: VoiceAction = intent === 'CREATE_CATEGORY' ? 'create_category' : 'remove_category';
+
+    console.log(`[VOICE] Texto: ${rawText} | Action: ${action} | Product: ${entity} | Category: null`);
+
+    return {
+      intent, action,
+      product: capitalize(entity),
+      quantity: null, unit: null, category: null,
+      entity: capitalize(entity),
+      value: capitalize(entity),
+      rawText,
+    };
+  }
+
+  // ── FASE 2: Detectar ação de ITEM pelo prefixo ────────────────────────────
+  let detectedIntent: VoiceIntent = 'UNKNOWN';
+  let remainingText = normalized;
+
+  // Ordenar prefixos do mais longo para o mais curto (evita match parcial)
+  const sortedPrefixes = Object.entries(ACTION_PREFIXES)
+    .sort(([a], [b]) => b.length - a.length);
+
+  for (const [prefix, intent] of sortedPrefixes) {
+    if (normalized.startsWith(norm(prefix))) {
+      detectedIntent = intent;
+      remainingText  = normalized.slice(norm(prefix).length).trim();
+      break;
+    }
+  }
+
+  if (detectedIntent === 'UNKNOWN') {
+    console.log(`[VOICE] Texto: ${rawText} | Action: unknown | Nenhum padrão encontrado`);
+    return {
+      intent: 'UNKNOWN', action: 'unknown',
+      product: null, quantity: null, unit: null, category: null,
+      entity: '', value: '', rawText,
+    };
+  }
+
+  // ── FASE 3: Extrair quantidade + unidade ──────────────────────────────────
+  const quantResult = extractQuantity(remainingText);
+  let productText = remainingText;
+
+  if (quantResult) {
+    // Remover "5 quilos" ou "5" do texto para isolar o produto
+    productText = (
+      remainingText.slice(0, quantResult.start) +
+      ' ' +
+      remainingText.slice(quantResult.end)
+    ).trim();
+  }
+
+  // ── FASE 4: Remover sufixos de "como comprado" ────────────────────────────
+  if (detectedIntent === 'MARK_PURCHASED') {
+    for (const suffix of PURCHASED_SUFFIXES) {
+      const ns = norm(suffix);
+      if (productText.endsWith(ns)) {
+        productText = productText.slice(0, productText.length - ns.length).trim();
+        break;
+      }
+    }
+  }
+
+  // ── FASE 5: Limpar produto (remover artigos/preposições) ──────────────────
+  productText = cleanProduct(productText).replace(/^de\s+/, '').trim();
+
+  if (productText.length === 0) {
+    console.log(`[VOICE] Texto: ${rawText} | Action: ${detectedIntent} | Produto vazio após extração`);
+    return {
+      intent: 'UNKNOWN', action: 'unknown',
+      product: null, quantity: null, unit: null, category: null,
+      entity: '', value: '', rawText,
+    };
+  }
+
+  // ── FASE 6: Categorizar produto automaticamente ───────────────────────────
+  const category = categorizeProduct(productText);
+
+  // ── FASE 7: Montar quantidade como string legível ─────────────────────────
+  let quantityDisplay: string | null = null;
+  if (quantResult) {
+    const q = quantResult.quantity!;
+    const u = quantResult.unit ?? 'un';
+    quantityDisplay = `${q} ${u}`;
+  }
+
+  const productDisplay = capitalize(productText);
+  const action: VoiceAction =
+    detectedIntent === 'ADD_OR_UPDATE_ITEM' ? 'add_or_update_item' :
+    detectedIntent === 'REMOVE_ITEM'        ? 'remove_item'        :
+    detectedIntent === 'MARK_PURCHASED'     ? 'mark_purchased'     : 'unknown';
+
+  console.log(
+    `[VOICE] Texto: ${rawText} | Action: ${action} | Product: ${productDisplay}` +
+    ` | Quantity: ${quantResult?.quantity ?? 'null'} | Unit: ${quantResult?.unit ?? 'null'}` +
+    ` | Category: ${category}`
+  );
+
   return {
-    intent:  'UNKNOWN',
-    action:  'unknown',
-    entity:  '',
-    value:   '',
+    intent: detectedIntent,
+    action,
+    product: productDisplay,
+    quantity: quantResult?.quantity ?? null,
+    unit: quantResult?.unit ?? null,
+    category,
+    entity: productDisplay,
+    value: productDisplay,
     rawText,
   };
 }
 
 // ─── Descrição legível para o usuário ────────────────────────────────────────
 
-export function describeCommand(cmd: VoiceCommand): string {
+export function describeCommand(cmd: ParsedCommand): string {
   switch (cmd.intent) {
-    case 'CREATE_ITEM':      return `✅ Criar item: "${cmd.entity}"`;
-    case 'REMOVE_ITEM':      return `🗑️ Remover item: "${cmd.entity}"`;
-    case 'CREATE_CATEGORY':  return `📁 Criar categoria: "${cmd.entity}"`;
+    case 'ADD_OR_UPDATE_ITEM': {
+      const qty = cmd.quantity ? `${cmd.quantity} ${cmd.unit ?? 'un'}` : null;
+      return `✅ ${cmd.product}${qty ? ` — ${qty}` : ''}${cmd.category ? ` (${cmd.category})` : ''}`;
+    }
+    case 'REMOVE_ITEM':      return `🗑️ Remover: "${cmd.product}"`;
+    case 'MARK_PURCHASED':   return `✔️ Comprado: "${cmd.product}"`;
+    case 'CREATE_CATEGORY':  return `📁 Nova categoria: "${cmd.entity}"`;
     case 'REMOVE_CATEGORY':  return `🗑️ Remover categoria: "${cmd.entity}"`;
-    case 'MARK_PURCHASED':   return `✔️ Marcar como comprado: "${cmd.entity}"`;
     default:
-      return '❓ Comando não reconhecido. Tente: "adicionar arroz", "criar categoria limpeza", "marcar pão como comprado".';
+      return '❓ Comando não reconhecido. Tente: "comprar 5 quilos de arroz", "adicionar leite", "criar categoria pet".';
   }
 }
