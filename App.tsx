@@ -250,6 +250,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                     <ShoppingMode
                         items={items}
                         onToggleItem={toggleItem}
+                        onDeleteItem={deleteItem}
                         onExit={() => setView(AppView.LISTA)}
                     />
                 );

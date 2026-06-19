@@ -4,20 +4,25 @@ import { Item } from '../types';
 interface ShoppingModeProps {
   items: Item[];
   onToggleItem: (id: string) => void;
+  onDeleteItem: (id: string) => void;
   onExit: () => void;
 }
 
-export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem, onExit }) => {
+export const ShoppingMode: React.FC<ShoppingModeProps> = ({
+  items,
+  onToggleItem,
+  onDeleteItem,
+  onExit,
+}) => {
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  // Agrupar itens por categoria, pendentes primeiro em cada grupo
   const grouped = useMemo(() => {
     const map: Record<string, Item[]> = {};
     items.forEach(item => {
       if (!map[item.categoria]) map[item.categoria] = [];
       map[item.categoria].push(item);
     });
-    // Ordenar: categorias com pendentes primeiro, depois já concluídas
     return Object.entries(map)
       .sort(([, a], [, b]) => {
         const pendA = a.filter(i => !i.comprado).length;
@@ -30,17 +35,17 @@ export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem,
       }));
   }, [items]);
 
-  const total = items.length;
+  const total     = items.length;
   const comprados = items.filter(i => i.comprado).length;
   const progresso = total > 0 ? (comprados / total) * 100 : 0;
 
   const totalEstimado = useMemo(
     () => items.filter(i => !i.comprado && i.preco_medio).reduce((s, i) => s + (i.preco_medio || 0), 0),
-    [items]
+    [items],
   );
   const totalGasto = useMemo(
     () => items.filter(i => i.comprado && i.preco_medio).reduce((s, i) => s + (i.preco_medio || 0), 0),
-    [items]
+    [items],
   );
 
   const handleToggle = (id: string) => {
@@ -49,9 +54,22 @@ export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem,
     setTimeout(() => setLastChecked(null), 600);
   };
 
+  const handleDelete = (id: string) => {
+    // Toque simples → pede confirmação; toque no confirmado → exclui
+    if (confirmDelete === id) {
+      onDeleteItem(id);
+      setConfirmDelete(null);
+    } else {
+      setConfirmDelete(id);
+      // Cancela confirmação após 3s sem novo toque
+      setTimeout(() => setConfirmDelete(prev => (prev === id ? null : prev)), 3000);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-dark-bg">
-      {/* Header do modo compras */}
+
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="sticky top-0 z-20 bg-white dark:bg-dark-card shadow-md px-4 py-3">
         <div className="flex items-center justify-between mb-2">
           <div>
@@ -76,7 +94,7 @@ export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem,
           />
         </div>
 
-        {/* Totais */}
+        {/* Totais financeiros */}
         <div className="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
           {totalGasto > 0 && (
             <span className="text-green-600 dark:text-green-400 font-semibold">
@@ -91,7 +109,7 @@ export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem,
         </div>
       </div>
 
-      {/* Lista agrupada por categoria */}
+      {/* ── Lista agrupada por categoria ─────────────────────────────────── */}
       <div className="flex-1 px-3 py-4 space-y-5 pb-24">
         {items.length === 0 && (
           <div className="text-center py-16 text-gray-400">
@@ -100,17 +118,30 @@ export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem,
             <p className="text-sm">Adicione itens antes de ir às compras</p>
           </div>
         )}
+
         {grouped.map(({ categoria, itens }) => {
           const pendentes = itens.filter(i => !i.comprado).length;
           const concluido = pendentes === 0;
+
           return (
-            <div key={categoria} className={`rounded-xl overflow-hidden shadow-sm ${concluido ? 'opacity-60' : ''}`}>
+            <div
+              key={categoria}
+              className={`rounded-xl overflow-hidden shadow-sm transition-opacity ${concluido ? 'opacity-60' : ''}`}
+            >
               {/* Cabeçalho da categoria */}
-              <div className={`px-4 py-2 flex items-center justify-between ${concluido ? 'bg-gray-200 dark:bg-gray-700' : 'bg-mint dark:bg-mint-dark'}`}>
-                <span className={`font-bold text-sm ${concluido ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-white'}`}>
+              <div className={`px-4 py-2 flex items-center justify-between ${
+                concluido ? 'bg-gray-200 dark:bg-gray-700' : 'bg-mint dark:bg-mint-dark'
+              }`}>
+                <span className={`font-bold text-sm ${
+                  concluido ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-white'
+                }`}>
                   {categoria}
                 </span>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${concluido ? 'bg-gray-300 text-gray-600 dark:bg-gray-600 dark:text-gray-300' : 'bg-white/30 text-white'}`}>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                  concluido
+                    ? 'bg-gray-300 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
+                    : 'bg-white/30 text-white'
+                }`}>
                   {concluido ? '✓ Concluído' : `${pendentes} pendente${pendentes !== 1 ? 's' : ''}`}
                 </span>
               </div>
@@ -118,49 +149,91 @@ export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem,
               {/* Itens */}
               <div className="bg-white dark:bg-dark-card divide-y divide-gray-100 dark:divide-gray-700">
                 {itens.map(item => {
-                  const isJustChecked = lastChecked === item.id;
+                  const isJustChecked  = lastChecked === item.id;
+                  const isConfirming   = confirmDelete === item.id;
+
                   return (
-                    <button
+                    <div
                       key={item.id}
-                      onClick={() => handleToggle(item.id)}
-                      className={`w-full flex items-center gap-4 px-4 py-4 text-left transition-colors active:scale-[0.98] ${
+                      className={`flex items-center gap-3 px-4 py-3 transition-colors ${
                         item.comprado
                           ? 'bg-gray-50 dark:bg-gray-800/50'
+                          : isJustChecked
+                          ? 'bg-green-50 dark:bg-green-900/20'
                           : 'hover:bg-mint/5 dark:hover:bg-mint/10'
-                      } ${isJustChecked ? 'bg-green-50 dark:bg-green-900/20' : ''}`}
+                      }`}
                     >
-                      {/* Checkbox grande */}
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
-                        item.comprado
-                          ? 'bg-mint-dark border-mint-dark'
-                          : 'border-gray-300 dark:border-gray-500'
-                      }`}>
-                        {item.comprado && (
-                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      {/* Checkbox — ocupa a maior parte da linha e é clicável */}
+                      <button
+                        onClick={() => handleToggle(item.id)}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-left active:scale-[0.98] transition-transform"
+                      >
+                        {/* Círculo de marcação */}
+                        <div className={`flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                          item.comprado
+                            ? 'bg-mint-dark border-mint-dark'
+                            : 'border-gray-300 dark:border-gray-500'
+                        }`}>
+                          {item.comprado && (
+                            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+
+                        {/* Nome e quantidade */}
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-base font-semibold truncate ${
+                            item.comprado
+                              ? 'line-through text-gray-400 dark:text-gray-500'
+                              : 'text-dark-gray dark:text-white'
+                          }`}>
+                            {item.nome}
+                          </p>
+                          {item.quantidade && (
+                            <p className={`text-sm ${item.comprado ? 'text-gray-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                              {item.quantidade}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Preço */}
+                        {item.preco_medio != null && (
+                          <span className={`flex-shrink-0 text-sm font-semibold ${
+                            item.comprado ? 'text-gray-400 line-through' : 'text-mint-dark'
+                          }`}>
+                            R$ {item.preco_medio.toFixed(2)}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Botão excluir */}
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all active:scale-90 ${
+                          isConfirming
+                            ? 'bg-red-500 text-white scale-110'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500'
+                        }`}
+                        title={isConfirming ? 'Toque novamente para confirmar' : 'Excluir item'}
+                        aria-label={`Excluir ${item.nome}`}
+                      >
+                        {isConfirming ? (
+                          /* Ícone de confirmação (!) */
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                          </svg>
+                        ) : (
+                          /* Ícone lixeira */
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14H6L5 6"/>
+                            <path d="M10 11v6M14 11v6"/>
+                            <path d="M9 6V4h6v2"/>
                           </svg>
                         )}
-                      </div>
-
-                      {/* Nome e quantidade */}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-base font-semibold truncate ${item.comprado ? 'line-through text-gray-400 dark:text-gray-500' : 'text-dark-gray dark:text-white'}`}>
-                          {item.nome}
-                        </p>
-                        {item.quantidade && (
-                          <p className={`text-sm ${item.comprado ? 'text-gray-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                            {item.quantidade}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Preço */}
-                      {item.preco_medio && (
-                        <span className={`flex-shrink-0 text-sm font-semibold ${item.comprado ? 'text-gray-400 line-through' : 'text-mint-dark'}`}>
-                          R$ {item.preco_medio.toFixed(2)}
-                        </span>
-                      )}
-                    </button>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -169,7 +242,7 @@ export const ShoppingMode: React.FC<ShoppingModeProps> = ({ items, onToggleItem,
         })}
       </div>
 
-      {/* Banner de conclusão */}
+      {/* ── Banner de conclusão ──────────────────────────────────────────── */}
       {total > 0 && comprados === total && (
         <div className="fixed bottom-0 left-0 right-0 bg-green-500 text-white text-center py-4 font-bold text-lg shadow-xl z-30 animate-bounce">
           🎉 Compras concluídas!

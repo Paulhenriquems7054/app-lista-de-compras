@@ -62,40 +62,10 @@
         });
       }
       
-      // Botão de instalação PWA - Apenas para navegador web
-      if (!isCapacitor) {
-        window.addEventListener('beforeinstallprompt', (e) => {
-          console.log('📱 PWA pode ser instalado');
-          e.preventDefault();
-          window.deferredPrompt = e;
-          
-          // Mostrar botão de instalação
-          const installBtn = document.createElement('button');
-          installBtn.textContent = '📱 Instalar App';
-          installBtn.style.cssText = `
-            position: fixed; top: 20px; right: 20px; z-index: 1000;
-            background: #4ECDC4; color: white; border: none;
-            padding: 10px 20px; border-radius: 25px; font-weight: bold;
-            cursor: pointer; box-shadow: 0 4px 15px rgba(78, 205, 196, 0.3);
-          `;
-          installBtn.onclick = () => {
-            e.prompt();
-            e.userChoice.then((choiceResult) => {
-              if (choiceResult.outcome === 'accepted') {
-                console.log('✅ Usuário instalou o PWA');
-              }
-              window.deferredPrompt = null;
-              installBtn.remove();
-            });
-          };
-          document.body.appendChild(installBtn);
-        });
-        
-        // PWA instalado
-        window.addEventListener('appinstalled', () => {
-          console.log('🎉 PWA instalado com sucesso!');
-        });
-      }
+      // PWA instalado
+      window.addEventListener('appinstalled', () => {
+        console.log('🎉 PWA instalado com sucesso!');
+      });
     </script>
     
     <!-- Open Graph / Social Media -->
