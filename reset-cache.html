@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Cache - Lista de Compras IA</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        
+        .info-box h3 {
+            color: #667eea;
+            font-size: 14px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .info-box p {
+            color: #555;
+            font-size: 13px;
+            line-height: 1.6;
+            margin: 5px 0;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+        
+        .status.yes {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.no {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        .button.secondary {
+            background: #4ECDC4;
+        }
+        
+        .button.danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .code {
+            background: #1e1e1e;
+            color: #4ECDC4;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Ferramentas de Teste</h1>
+        <p class="subtitle">Lista de Compras IA - v1.0.9</p>
+        
+        <div class="warning">
+            ⚠️ <strong>Atenção:</strong> Esta página é apenas para testes e desenvolvimento.
+        </div>
+        
+        <div class="info-box">
+            <h3>📊 Status Atual do LocalStorage</h3>
+            <p>
+                <strong>Apresentação vista:</strong>
+                <span class="status" id="status-presentation">Verificando...</span>
+            </p>
+            <p>
+                <strong>Versão do app:</strong>
+                <span id="app-version">Verificando...</span>
+            </p>
+            <p>
+                <strong>Dark Mode:</strong>
+                <span class="status" id="status-darkmode">Verificando...</span>
+            </p>
+            <p>
+                <strong>Itens na lista:</strong>
+                <span id="list-count">Verificando...</span>
+            </p>
+        </div>
+        
+        <div class="info-box">
+            <h3>🌐 Informações do Ambiente</h3>
+            <p><strong>URL Atual:</strong> <span id="current-url"></span></p>
+            <p><strong>Capacitor:</strong> <span id="is-capacitor"></span></p>
+            <p><strong>User Agent:</strong> <span id="user-agent" style="font-size: 11px;"></span></p>
+        </div>
+        
+        <button class="button secondary" onclick="testFlow()">
+            🧪 Testar Fluxo Completo
+        </button>
+        
+        <button class="button" onclick="resetPresentation()">
+            🎨 Resetar Apresentação
+        </button>
+        
+        <button class="button danger" onclick="clearAll()">
+            🗑️ Limpar Tudo (Cache + Dados)
+        </button>
+        
+        <button class="button" onclick="goToApp()">
+            ➡️ Ir para o App
+        </button>
+        
+        <div class="success-message" id="success-message"></div>
+        
+        <div class="code" id="console-log">
+            <div>📋 Console de Logs:</div>
+            <div id="log-content"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Função para adicionar log
+        function addLog(message) {
+            const logContent = document.getElementById('log-content');
+            const timestamp = new Date().toLocaleTimeString('pt-BR');
+            logContent.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+        
+        // Atualizar status
+        function updateStatus() {
+            // Apresentação
+            const hasSeenPresentation = localStorage.getItem('hasSeenPresentation');
+            const statusPresentation = document.getElementById('status-presentation');
+            if (hasSeenPresentation === 'true') {
+                statusPresentation.textContent = 'SIM ✓';
+                statusPresentation.className = 'status yes';
+            } else {
+                statusPresentation.textContent = 'NÃO ✗';
+                statusPresentation.className = 'status no';
+            }
+            
+            // Versão
+            const appVersion = localStorage.getItem('appVersion') || 'Não definida';
+            document.getElementById('app-version').textContent = appVersion;
+            
+            // Dark Mode
+            const darkMode = localStorage.getItem('darkMode');
+            const statusDarkmode = document.getElementById('status-darkmode');
+            if (darkMode === 'true') {
+                statusDarkmode.textContent = 'ATIVADO ✓';
+                statusDarkmode.className = 'status yes';
+            } else {
+                statusDarkmode.textContent = 'DESATIVADO ✗';
+                statusDarkmode.className = 'status no';
+            }
+            
+            // Itens da lista
+            const shoppingList = JSON.parse(localStorage.getItem('shoppingList') || '[]');
+            document.getElementById('list-count').textContent = `${shoppingList.length} itens`;
+            
+            // URL e ambiente
+            document.getElementById('current-url').textContent = window.location.href;
+            document.getElementById('is-capacitor').textContent = window.Capacitor ? 'SIM (App Nativo)' : 'NÃO (Navegador)';
+            document.getElementById('user-agent').textContent = navigator.userAgent;
+            
+            addLog('✅ Status atualizado');
+        }
+        
+        // Resetar apenas a apresentação
+        function resetPresentation() {
+            addLog('🎨 Resetando apresentação...');
+            localStorage.removeItem('hasSeenPresentation');
+            localStorage.setItem('appVersion', '1.0.9');
+            
+            showSuccess('✅ Apresentação resetada! Recarregue a página ou vá para o app.');
+            updateStatus();
+            addLog('✓ Apresentação resetada com sucesso');
+        }
+        
+        // Limpar tudo
+        function clearAll() {
+            if (confirm('⚠️ Tem certeza? Isso apagará TODOS os dados do app (listas, configurações, histórico).')) {
+                addLog('🗑️ Limpando TUDO...');
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                // Limpar cache do Service Worker
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(registrations => {
+                        for(let registration of registrations) {
+                            registration.unregister();
+                            addLog('🔧 Service Worker removido');
+                        }
+                    });
+                }
+                
+                // Limpar cache
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        for (let name of names) {
+                            caches.delete(name);
+                            addLog(`🗑️ Cache "${name}" removido`);
+                        }
+                    });
+                }
+                
+                showSuccess('✅ Tudo limpo! Recarregue a página para começar do zero.');
+                updateStatus();
+                addLog('✓ Limpeza completa concluída');
+            }
+        }
+        
+        // Testar fluxo completo
+        function testFlow() {
+            addLog('🧪 Iniciando teste de fluxo...');
+            addLog('1️⃣ Resetando apresentação...');
+            localStorage.removeItem('hasSeenPresentation');
+            localStorage.setItem('appVersion', '1.0.9');
+            
+            addLog('2️⃣ Aguardando 2 segundos...');
+            setTimeout(() => {
+                addLog('3️⃣ Redirecionando para index.html...');
+                window.location.href = '/index.html';
+            }, 2000);
+            
+            showSuccess('🧪 Teste iniciado! Você será redirecionado em 2 segundos...');
+        }
+        
+        // Ir para o app
+        function goToApp() {
+            addLog('➡️ Redirecionando para o app...');
+            window.location.href = '/index.html';
+        }
+        
+        // Mostrar mensagem de sucesso
+        function showSuccess(message) {
+            const successEl = document.getElementById('success-message');
+            successEl.textContent = message;
+            successEl.style.display = 'block';
+            
+            setTimeout(() => {
+                successEl.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Inicializar
+        addLog('🚀 Página de teste carregada');
+        updateStatus();
+        
+        // Atualizar status a cada 5 segundos
+        setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>
+

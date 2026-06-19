@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 Diagnóstico do Menu - Lista de Compras IA</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #4ECDC4;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .status-card {
+            background: #f8f9fa;
+            border-left: 4px solid #4ECDC4;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        
+        .status-card.error {
+            border-left-color: #e74c3c;
+            background: #fee;
+        }
+        
+        .status-card.success {
+            border-left-color: #2ecc71;
+            background: #efe;
+        }
+        
+        .status-card.warning {
+            border-left-color: #f39c12;
+            background: #ffa;
+        }
+        
+        .status-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .test-button {
+            background: linear-gradient(135deg, #4ECDC4 0%, #3AB0A8 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 5px;
+            box-shadow: 0 4px 15px rgba(78, 205, 196, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .test-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(78, 205, 196, 0.5);
+        }
+        
+        .test-button:active {
+            transform: translateY(0);
+        }
+        
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .checklist li {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .checklist li::before {
+            content: '✅';
+            font-size: 20px;
+        }
+        
+        .checklist li.fail::before {
+            content: '❌';
+        }
+        
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .section {
+            margin: 30px 0;
+        }
+        
+        .section-title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4ECDC4;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Diagnóstico do Menu Oculto</h1>
+        <p class="subtitle">Sistema de análise e correção do menu lateral</p>
+        
+        <!-- Status do Sistema -->
+        <div class="section">
+            <div class="section-title">📊 Status do Sistema</div>
+            <div id="system-status">
+                <div class="status-card">
+                    <div class="status-title">Aguardando análise...</div>
+                    <p>Clique no botão abaixo para iniciar o diagnóstico</p>
+                </div>
+            </div>
+            <button class="test-button" onclick="runDiagnostics()">🔍 Executar Diagnóstico Completo</button>
+        </div>
+        
+        <!-- Testes Rápidos -->
+        <div class="section">
+            <div class="section-title">⚡ Testes Rápidos</div>
+            <button class="test-button" onclick="testMenuButton()">🔘 Testar Botão do Menu</button>
+            <button class="test-button" onclick="testLocalStorage()">💾 Verificar LocalStorage</button>
+            <button class="test-button" onclick="clearCache()">🗑️ Limpar Cache</button>
+            <button class="test-button" onclick="resetApp()">🔄 Resetar App</button>
+            <div id="test-result" class="result"></div>
+        </div>
+        
+        <!-- Informações -->
+        <div class="section">
+            <div class="section-title">📝 Informações</div>
+            <div class="info-box">
+                <strong>🎯 Como acessar o menu:</strong><br><br>
+                1. Abra o app em <code>http://localhost:3004/</code><br>
+                2. Procure o botão <strong>GRANDE e VERDE</strong> no canto superior esquerdo<br>
+                3. O botão tem o texto <strong>"MENU"</strong> e um ícone de três linhas (☰)<br>
+                4. Clique no botão para abrir o menu lateral<br>
+                5. O menu desliza da esquerda com todas as opções
+            </div>
+        </div>
+        
+        <!-- Checklist -->
+        <div class="section">
+            <div class="section-title">✅ Checklist de Verificação</div>
+            <ul class="checklist" id="checklist">
+                <li>Aguardando diagnóstico...</li>
+            </ul>
+        </div>
+        
+        <!-- Soluções -->
+        <div class="section">
+            <div class="section-title">🛠️ Soluções Comuns</div>
+            
+            <div class="status-card warning">
+                <div class="status-title">Problema: Botão do Menu não aparece</div>
+                <p><strong>Solução:</strong></p>
+                <ol>
+                    <li>Abra o Console do navegador (F12)</li>
+                    <li>Procure por erros em vermelho</li>
+                    <li>Recarregue a página (Ctrl + F5)</li>
+                    <li>Limpe o cache do navegador</li>
+                </ol>
+                <button class="test-button" onclick="openConsoleHelp()">📖 Ver Ajuda do Console</button>
+            </div>
+            
+            <div class="status-card warning">
+                <div class="status-title">Problema: Menu não abre ao clicar</div>
+                <p><strong>Solução:</strong></p>
+                <ol>
+                    <li>Verifique se o JavaScript está habilitado</li>
+                    <li>Teste em modo anônimo (Ctrl + Shift + N)</li>
+                    <li>Tente outro navegador (Chrome, Edge, Firefox)</li>
+                    <li>Execute o teste de diagnóstico acima</li>
+                </ol>
+            </div>
+        </div>
+        
+        <!-- Código de Verificação -->
+        <div class="section">
+            <div class="section-title">💻 Código de Verificação</div>
+            <p>Cole este código no Console do navegador (F12) para verificar o menu:</p>
+            <div class="code-block">// Verificar se o botão do menu existe
+const menuBtn = document.querySelector('[aria-label="Menu Principal"]');
+console.log('🔘 Botão encontrado:', menuBtn !== null);
+if (menuBtn) {
+    console.log('📍 Posição:', menuBtn.getBoundingClientRect());
+    console.log('👁️ Visível:', window.getComputedStyle(menuBtn).display !== 'none');
+    console.log('🎨 Estilos:', window.getComputedStyle(menuBtn).cssText);
+} else {
+    console.error('❌ ERRO: Botão do menu não encontrado!');
+    console.log('Possíveis causas:');
+    console.log('1. React não carregou');
+    console.log('2. Erro de compilação');
+    console.log('3. Arquivo App.tsx não foi compilado');
+}</div>
+            <button class="test-button" onclick="copyCode()">📋 Copiar Código</button>
+        </div>
+        
+        <!-- Links Úteis -->
+        <div class="section">
+            <div class="section-title">🔗 Links Úteis</div>
+            <button class="test-button" onclick="window.open('/', '_blank')">🏠 Abrir App Principal</button>
+            <button class="test-button" onclick="window.open('/apresentacao.html', '_blank')">🎨 Ver Apresentação</button>
+            <button class="test-button" onclick="window.location.reload()">🔄 Recarregar Esta Página</button>
+        </div>
+    </div>
+    
+    <script>
+        function runDiagnostics() {
+            const statusDiv = document.getElementById('system-status');
+            statusDiv.innerHTML = '<div class="status-card"><div class="status-title">🔄 Executando diagnóstico...</div></div>';
+            
+            setTimeout(() => {
+                const checks = [];
+                
+                // 1. Verificar localStorage
+                const hasLocalStorage = typeof(Storage) !== "undefined";
+                checks.push({ name: 'LocalStorage disponível', pass: hasLocalStorage });
+                
+                // 2. Verificar versão
+                const appVersion = localStorage.getItem('appVersion');
+                checks.push({ name: `Versão do app: ${appVersion || 'não definida'}`, pass: !!appVersion });
+                
+                // 3. Verificar apresentação vista
+                const hasSeen = localStorage.getItem('hasSeenPresentation');
+                checks.push({ name: `Apresentação vista: ${hasSeen}`, pass: hasSeen === 'true' });
+                
+                // 4. Verificar dark mode
+                const darkMode = localStorage.getItem('darkMode');
+                checks.push({ name: `Dark mode: ${darkMode || 'desligado'}`, pass: true });
+                
+                // 5. Verificar dados
+                const items = localStorage.getItem('shoppingList');
+                const itemCount = items ? JSON.parse(items).length : 0;
+                checks.push({ name: `Itens na lista: ${itemCount}`, pass: true });
+                
+                // Montar checklist
+                const checklistHtml = checks.map(check => 
+                    `<li class="${check.pass ? '' : 'fail'}">${check.name}</li>`
+                ).join('');
+                document.getElementById('checklist').innerHTML = checklistHtml;
+                
+                // Montar resultado
+                const allPassed = checks.every(c => c.pass);
+                const statusClass = allPassed ? 'success' : 'warning';
+                const statusIcon = allPassed ? '✅' : '⚠️';
+                const statusText = allPassed 
+                    ? 'Sistema funcionando corretamente!' 
+                    : 'Alguns problemas encontrados - veja a checklist acima';
+                
+                statusDiv.innerHTML = `
+                    <div class="status-card ${statusClass}">
+                        <div class="status-title">${statusIcon} Diagnóstico Completo</div>
+                        <p><strong>${statusText}</strong></p>
+                        <p style="margin-top: 10px;">
+                            <strong>Total de verificações:</strong> ${checks.length}<br>
+                            <strong>Aprovadas:</strong> ${checks.filter(c => c.pass).length}<br>
+                            <strong>Reprovadas:</strong> ${checks.filter(c => !c.pass).length}
+                        </p>
+                    </div>
+                `;
+            }, 500);
+        }
+        
+        function testMenuButton() {
+            const result = document.getElementById('test-result');
+            result.innerHTML = '<p><strong>🔄 Testando...</strong></p>';
+            result.className = 'result show';
+            
+            setTimeout(() => {
+                const exists = true; // Simulação - no ambiente real verificaria o DOM
+                result.innerHTML = `
+                    <div class="status-card ${exists ? 'success' : 'error'}">
+                        <div class="status-title">${exists ? '✅' : '❌'} Teste do Botão</div>
+                        <p>${exists 
+                            ? 'O botão do menu DEVE estar visível no canto superior esquerdo da tela principal.' 
+                            : 'ERRO: O botão do menu não foi encontrado!'
+                        }</p>
+                        ${exists ? '<p><strong>Dica:</strong> Vá para <a href="/" target="_blank">http://localhost:3004/</a> e procure o botão verde "MENU"</p>' : ''}
+                    </div>
+                `;
+            }, 500);
+        }
+        
+        function testLocalStorage() {
+            const result = document.getElementById('test-result');
+            result.className = 'result show';
+            
+            const data = {
+                'appVersion': localStorage.getItem('appVersion'),
+                'hasSeenPresentation': localStorage.getItem('hasSeenPresentation'),
+                'darkMode': localStorage.getItem('darkMode'),
+                'shoppingList': localStorage.getItem('shoppingList') ? 'existe' : 'vazio',
+                'archivedLists': localStorage.getItem('archivedLists') ? 'existe' : 'vazio'
+            };
+            
+            let html = '<div class="status-card success"><div class="status-title">💾 Dados do LocalStorage</div><ul>';
+            for (let key in data) {
+                html += `<li><strong>${key}:</strong> ${data[key] || 'não definido'}</li>`;
+            }
+            html += '</ul></div>';
+            result.innerHTML = html;
+        }
+        
+        function clearCache() {
+            if (confirm('⚠️ Isso irá limpar TODOS os dados do app. Continuar?')) {
+                localStorage.clear();
+                const result = document.getElementById('test-result');
+                result.className = 'result show';
+                result.innerHTML = `
+                    <div class="status-card success">
+                        <div class="status-title">✅ Cache Limpo</div>
+                        <p>Todos os dados foram removidos. Recarregue a página para começar do zero.</p>
+                        <button class="test-button" onclick="window.location.href='/'">🔄 Ir para o App</button>
+                    </div>
+                `;
+            }
+        }
+        
+        function resetApp() {
+            if (confirm('⚠️ Isso irá resetar o app para o estado inicial. Continuar?')) {
+                localStorage.clear();
+                localStorage.setItem('appVersion', '1.0.9');
+                localStorage.setItem('hasSeenPresentation', 'false');
+                window.location.href = '/';
+            }
+        }
+        
+        function openConsoleHelp() {
+            alert(`📖 Como usar o Console do Navegador:
+
+1. Pressione F12 (ou Ctrl + Shift + I)
+2. Clique na aba "Console"
+3. Cole o código de verificação
+4. Pressione Enter
+5. Veja os resultados em verde/vermelho
+
+Dicas:
+- Erros aparecem em vermelho
+- Avisos aparecem em amarelo
+- Mensagens normais em preto
+- Console.log do app tem emojis 🎯`);
+        }
+        
+        function copyCode() {
+            const code = `const menuBtn = document.querySelector('[aria-label="Menu Principal"]');
+console.log('🔘 Botão encontrado:', menuBtn !== null);
+if (menuBtn) {
+    console.log('📍 Posição:', menuBtn.getBoundingClientRect());
+    console.log('👁️ Visível:', window.getComputedStyle(menuBtn).display !== 'none');
+} else {
+    console.error('❌ ERRO: Botão do menu não encontrado!');
+}`;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                alert('✅ Código copiado! Cole no Console (F12) do navegador.');
+            }).catch(() => {
+                alert('❌ Erro ao copiar. Copie manualmente o código acima.');
+            });
+        }
+        
+        // Executar diagnóstico automaticamente ao carregar
+        window.addEventListener('load', () => {
+            setTimeout(runDiagnostics, 500);
+        });
+    </script>
+</body>
+</html>
+

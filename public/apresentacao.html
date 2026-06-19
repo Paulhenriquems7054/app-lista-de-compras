@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <!-- Inicializar dark mode ANTES de carregar CSS -->
+    <script>
+      (function() {
+        const darkMode = localStorage.getItem('darkMode') === 'true';
+        if (darkMode) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Lista de Compras - Organize suas compras com inteligência">
+    <title>Lista de Compras</title>
+    <link rel="stylesheet" href="apresentacao.css">
+    <link rel="icon" type="image/png" href="/favicon.png">
+</head>
+<body>
+    <!-- Canvas para partículas animadas -->
+    <canvas id="particles-canvas"></canvas>
+    
+    <!-- Container principal -->
+    <div class="container" id="main-container">
+        <!-- Logo com brilho pulsante -->
+        <div class="logo-container">
+            <div class="glow-circle"></div>
+            <img src="/res/1024.png" alt="Lista de Compras" class="logo" id="logo">
+        </div>
+        
+        <!-- Título animado -->
+        <h1 class="title" id="title">
+            <div class="title-line">
+                <span class="letter">L</span><span class="letter">I</span><span class="letter">S</span><span class="letter">T</span><span class="letter">A</span>
+                <span class="letter space"> </span>
+                <span class="letter">D</span><span class="letter">E</span>
+            </div>
+            <div class="title-line">
+                <span class="letter">C</span><span class="letter">O</span><span class="letter">M</span><span class="letter">P</span><span class="letter">R</span><span class="letter">A</span><span class="letter">S</span>
+            </div>
+        </h1>
+        
+        <!-- Subtítulo -->
+        <p class="subtitle" id="subtitle">Organize suas compras com inteligência artificial</p>
+        
+        <!-- Botão Entrar -->
+        <button class="enter-button" id="enter-button">
+            <span>Entrar</span>
+            <div class="button-glow"></div>
+        </button>
+        
+        <!-- Indicador de carregamento -->
+        <div class="loading-dots" id="loading-dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+    
+    <!-- Overlay para transição -->
+    <div class="transition-overlay" id="transition-overlay"></div>
+    
+    <script>
+        // Garantir que a apresentação está sendo exibida
+        console.log('✅ Apresentacao.html carregada');
+        console.log('📍 URL:', window.location.href);
+        console.log('💾 LocalStorage:', localStorage.getItem('hasSeenPresentation'));
+        
+        // Verificar se precisa resetar (útil após desinstalar/reinstalar)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('reset') === 'true') {
+            console.log('🔄 Reset solicitado - limpando localStorage');
+            localStorage.removeItem('hasSeenPresentation');
+        }
+    </script>
+    <script src="apresentacao.js"></script>
+</body>
+</html>
+

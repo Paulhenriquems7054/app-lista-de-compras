@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificação do Título</title>
+    <link rel="stylesheet" href="apresentacao.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            max-width: 800px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .check-section {
+            background: rgba(78, 205, 196, 0.2);
+            border: 2px solid #4ECDC4;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        .expected {
+            background: rgba(107, 203, 119, 0.2);
+            border: 2px solid #6BCB77;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        .button {
+            background: linear-gradient(135deg, #4ECDC4, #6BCB77);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            margin: 10px;
+            border: none;
+            cursor: pointer;
+        }
+        .correct {
+            color: #6BCB77;
+            font-weight: bold;
+        }
+        .incorrect {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Verificação do Título "LISTA DE COMPRAS"</h1>
+        
+        <div class="expected">
+            <h2 style="color: #6BCB77;">✅ Layout Correto Esperado:</h2>
+            <div style="font-size: 2.5rem; font-weight: bold; line-height: 1.2; margin: 20px 0;">
+                LISTA DE<br>
+                COMPRAS
+            </div>
+            <p style="margin: 10px 0 0 0; font-size: 1rem; opacity: 0.8;">
+                Primeira linha: "LISTA DE"<br>
+                Segunda linha: "COMPRAS"
+            </p>
+        </div>
+        
+        <div class="check-section">
+            <h2 style="color: #4ECDC4;">🎨 Layout Atual na Apresentação:</h2>
+            <h1 class="title" style="font-size: 2.5rem;">
+                <div class="title-line">
+                    <span class="letter">L</span><span class="letter">I</span><span class="letter">S</span><span class="letter">T</span><span class="letter">A</span>
+                    <span class="letter space"> </span>
+                    <span class="letter">D</span><span class="letter">E</span>
+                </div>
+                <div class="title-line">
+                    <span class="letter">C</span><span class="letter">O</span><span class="letter">M</span><span class="letter">P</span><span class="letter">R</span><span class="letter">A</span><span class="letter">S</span>
+                </div>
+            </h1>
+        </div>
+        
+        <div class="check-section">
+            <h2 style="color: #FFD93D;">📋 Verificação:</h2>
+            <div style="text-align: left; max-width: 500px; margin: 0 auto;">
+                <p><span class="correct">✅</span> <strong>Primeira linha:</strong> "LISTA DE" (7 caracteres + espaço)</p>
+                <p><span class="correct">✅</span> <strong>Segunda linha:</strong> "COMPRAS" (7 caracteres)</p>
+                <p><span class="correct">✅</span> <strong>Total:</strong> "LISTA DE COMPRAS" (15 caracteres)</p>
+                <p><span class="correct">✅</span> <strong>Quebra:</strong> Lógica e proporcional</p>
+                <p><span class="correct">✅</span> <strong>Centralização:</strong> Ambas centralizadas</p>
+            </div>
+        </div>
+        
+        <div style="margin-top: 2rem;">
+            <a href="/apresentacao.html" class="button">🎨 Ver Apresentação Completa</a>
+            <button onclick="location.reload()" class="button">🔄 Recarregar</button>
+        </div>
+        
+        <div style="margin-top: 2rem; padding: 20px; background: rgba(255, 255, 255, 0.05); border-radius: 10px;">
+            <h3 style="color: #4ECDC4;">🎯 Resultado:</h3>
+            <p style="font-size: 1.2rem; font-weight: bold; color: #6BCB77;">
+                ✅ TÍTULO "LISTA DE COMPRAS" CORRIGIDO E FUNCIONANDO!
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+
+
+

@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Inicializar dark mode ANTES de carregar qualquer coisa -->
+    <script>
+      (function() {
+        const darkMode = localStorage.getItem('darkMode') === 'true';
+        if (darkMode) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    
+    <!-- Título e descrição -->
+    <title>Lista de Compras - Organize suas compras</title>
+    <meta name="description" content="Gerencie suas compras de forma inteligente com sugestões personalizadas e insights sobre seus hábitos de consumo." />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/res/1024.png" />
+    
+    <!-- Meta tags para PWA -->
+    <meta name="theme-color" content="#4ECDC4" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Lista de Compras" />
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- PWA Service Worker - Apenas para navegador web -->
+    <script>
+      // Detectar se está no Capacitor (app nativo)
+      const isCapacitor = window.Capacitor !== undefined;
+      
+      if (!isCapacitor && 'serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('✅ Service Worker registrado:', registration.scope);
+              
+              // Verificar atualizações
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // Nova versão disponível
+                    if (confirm('Nova versão disponível! Recarregar a página?')) {
+                      window.location.reload();
+                    }
+                  }
+                });
+              });
+            })
+            .catch((error) => {
+              console.log('❌ Falha no registro do Service Worker:', error);
+            });
+        });
+      }
+      
+      // Botão de instalação PWA - Apenas para navegador web
+      if (!isCapacitor) {
+        window.addEventListener('beforeinstallprompt', (e) => {
+          console.log('📱 PWA pode ser instalado');
+          e.preventDefault();
+          window.deferredPrompt = e;
+          
+          // Mostrar botão de instalação
+          const installBtn = document.createElement('button');
+          installBtn.textContent = '📱 Instalar App';
+          installBtn.style.cssText = `
+            position: fixed; top: 20px; right: 20px; z-index: 1000;
+            background: #4ECDC4; color: white; border: none;
+            padding: 10px 20px; border-radius: 25px; font-weight: bold;
+            cursor: pointer; box-shadow: 0 4px 15px rgba(78, 205, 196, 0.3);
+          `;
+          installBtn.onclick = () => {
+            e.prompt();
+            e.userChoice.then((choiceResult) => {
+              if (choiceResult.outcome === 'accepted') {
+                console.log('✅ Usuário instalou o PWA');
+              }
+              window.deferredPrompt = null;
+              installBtn.remove();
+            });
+          };
+          document.body.appendChild(installBtn);
+        });
+        
+        // PWA instalado
+        window.addEventListener('appinstalled', () => {
+          console.log('🎉 PWA instalado com sucesso!');
+        });
+      }
+    </script>
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Lista de Compras" />
+    <meta property="og:description" content="Organize suas compras com praticidade" />
+    <meta property="og:image" content="/res/1024.png" />
+    
+    <!-- Fontes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-light-gray dark:bg-dark-bg text-dark-gray dark:text-light-gray">
+    <div id="root"></div>
+    
+    <!-- Loading indicator -->
+    <div id="loading" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #4ECDC4;">
+      <div style="font-size: 48px; margin-bottom: 10px;">🛒</div>
+      <div>Carregando...</div>
+    </div>
+    
+    <script>
+      console.log('🚀 INDEX.HTML - Iniciando app...');
+      
+      // Versão do app
+      const APP_VERSION = '1.0.9';
+      const hasSeenPresentation = localStorage.getItem('hasSeenPresentation');
+      const savedVersion = localStorage.getItem('appVersion');
+      
+      console.log('👁️ hasSeenPresentation:', hasSeenPresentation);
+      console.log('📦 Versão atual:', APP_VERSION, '| Salva:', savedVersion);
+      console.log('📱 É app nativo?', window.Capacitor !== undefined);
+      
+      // Se é primeira vez OU nova versão, mostrar apresentação
+      if (hasSeenPresentation !== 'true' || savedVersion !== APP_VERSION) {
+        console.log('🎨 Mostrar apresentação');
+        localStorage.setItem('appVersion', APP_VERSION);
+        window.location.replace('./apresentacao.html');
+      } else {
+        console.log('✅ Carregar app React diretamente');
+        // Remover loading quando React carregar
+        setTimeout(() => {
+          const loading = document.getElementById('loading');
+          if (loading) loading.style.display = 'none';
+        }, 1000);
+      }
+    </script>
+    
+    <!-- Script principal do React - carrega se já viu apresentação -->
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

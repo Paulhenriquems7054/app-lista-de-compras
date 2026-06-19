@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Lista de Compras IA</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: white;
+            font-family: 'Roboto', sans-serif;
+        }
+        .loader {
+            text-align: center;
+        }
+        .loader-icon {
+            font-size: 64px;
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        .loader-text {
+            margin-top: 20px;
+            font-size: 18px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader">
+        <div class="loader-icon">🛒</div>
+        <div class="loader-text">Carregando...</div>
+    </div>
+    
+    <script>
+        console.log('🚀 STARTUP.HTML - Iniciando decisão de rota...');
+        console.log('📍 Location:', window.location.href);
+        console.log('🔧 Capacitor:', window.Capacitor !== undefined);
+        
+        // Sistema de versão
+        const APP_VERSION = '1.0.1'; // Incrementado para forçar apresentação
+        const savedVersion = localStorage.getItem('appVersion');
+        const hasSeenPresentation = localStorage.getItem('hasSeenPresentation');
+        
+        console.log('👁️ hasSeenPresentation:', hasSeenPresentation);
+        console.log('📦 APP_VERSION:', APP_VERSION);
+        console.log('💾 savedVersion:', savedVersion);
+        
+        // Decidir para onde ir
+        let targetUrl;
+        
+        if (hasSeenPresentation !== 'true' || savedVersion !== APP_VERSION) {
+            // Primeira vez ou nova versão - ir para apresentação
+            console.log('✅ DECISÃO: Redirecionar para APRESENTAÇÃO');
+            targetUrl = './apresentacao.html';
+            localStorage.setItem('appVersion', APP_VERSION);
+        } else {
+            // Já viu - ir direto para o app
+            console.log('✅ DECISÃO: Redirecionar para APP PRINCIPAL');
+            targetUrl = './index.html';
+        }
+        
+        console.log('🎯 Redirecionando para:', targetUrl);
+        
+        // Redirecionar após pequeno delay
+        setTimeout(() => {
+            window.location.href = targetUrl;
+        }, 300);
+    </script>
+</body>
+</html>
+

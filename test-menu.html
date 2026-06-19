@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste do Menu - Lista de Compras IA</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #4ECDC4;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        
+        .success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+        
+        .error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border: 2px solid #17a2b8;
+            color: #0c5460;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 10px 5px;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4);
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        button:active {
+            transform: scale(0.95);
+        }
+        
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #4ECDC4;
+        }
+        
+        .test-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        li {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 5px;
+            border-left: 3px solid #4ECDC4;
+        }
+        
+        .code {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        
+        .emoji {
+            font-size: 1.5em;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Teste do Menu Lateral</h1>
+        <p style="color: #666; margin-bottom: 30px;">Ferramenta de diagnóstico para verificar se o menu está funcionando</p>
+        
+        <div class="test-section">
+            <h2>📋 Status do Sistema</h2>
+            <div id="status-container">
+                <!-- Será preenchido via JavaScript -->
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🧪 Testes Rápidos</h2>
+            <button onclick="testarApresentacao()">🎨 Resetar Apresentação</button>
+            <button onclick="testarLocalStorage()">💾 Verificar LocalStorage</button>
+            <button onclick="limparCache()">🗑️ Limpar Cache</button>
+            <button onclick="abrirApp()">🚀 Abrir App</button>
+        </div>
+        
+        <div class="test-section">
+            <h2>✅ Checklist do Menu</h2>
+            <ul>
+                <li><span class="emoji">📱</span> O app deve ter um botão "MENU" grande e verde no canto superior esquerdo</li>
+                <li><span class="emoji">🎯</span> Ao clicar no botão, o menu lateral deve abrir da esquerda</li>
+                <li><span class="emoji">🗂️</span> O menu deve ter 3 seções: Navegação, Ferramentas e Configurações</li>
+                <li><span class="emoji">🔧</span> Ferramentas deve ter: Importar, Backup, Orçamento, Notificações, Relatórios</li>
+                <li><span class="emoji">⚙️</span> Configurações deve ter: Dark Mode Toggle</li>
+            </ul>
+        </div>
+        
+        <div class="test-section">
+            <h2>📝 Informações Técnicas</h2>
+            <div class="code">
+                <div>✅ Arquivo: App.tsx</div>
+                <div>✅ Linha do Menu: 445-526</div>
+                <div>✅ Botão Menu: Linha 378-400</div>
+                <div>✅ Estado: isMobileMenuOpen</div>
+                <div>✅ Componentes: ImportData, BackupExport, PriceBudget, Notifications, AdvancedReports</div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🐛 Problemas Comuns e Soluções</h2>
+            <div class="info" style="margin: 10px 0;">
+                <strong>Problema 1:</strong> Botão do menu não aparece<br>
+                <strong>Solução:</strong> Verifique se o App.tsx foi compilado corretamente. Execute: npm run dev
+            </div>
+            
+            <div class="info" style="margin: 10px 0;">
+                <strong>Problema 2:</strong> Menu não abre ao clicar<br>
+                <strong>Solução:</strong> Verifique erros no console (F12). O estado isMobileMenuOpen pode não estar mudando.
+            </div>
+            
+            <div class="info" style="margin: 10px 0;">
+                <strong>Problema 3:</strong> Ferramentas não aparecem no menu<br>
+                <strong>Solução:</strong> Verifique se showButton={true} está presente em todos os componentes.
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>📖 Como Acessar o Menu</h2>
+            <ol style="list-style: decimal; padding-left: 20px;">
+                <li style="border: none; margin: 10px 0;">Abra o app em <strong>http://localhost:3004/</strong></li>
+                <li style="border: none; margin: 10px 0;">Se for primeira vez, verá a tela de apresentação - clique em "Entrar"</li>
+                <li style="border: none; margin: 10px 0;">No canto superior esquerdo, clique no botão <strong>"MENU"</strong> (grande e verde)</li>
+                <li style="border: none; margin: 10px 0;">O menu lateral deve deslizar da esquerda</li>
+                <li style="border: none; margin: 10px 0;">Explore as seções: Navegação, Ferramentas e Configurações</li>
+            </ol>
+        </div>
+    </div>
+    
+    <script>
+        // Verificar status do sistema
+        function verificarStatus() {
+            const statusContainer = document.getElementById('status-container');
+            let html = '';
+            
+            // Verificar se já viu apresentação
+            const hasSeenPresentation = localStorage.getItem('hasSeenPresentation');
+            html += hasSeenPresentation === 'true' 
+                ? '<div class="success">✅ Apresentação já foi vista</div>'
+                : '<div class="warning">⚠️ Apresentação ainda não foi vista (primeira vez)</div>';
+            
+            // Verificar versão
+            const appVersion = localStorage.getItem('appVersion');
+            html += appVersion 
+                ? `<div class="info">📦 Versão do app: ${appVersion}</div>`
+                : '<div class="warning">⚠️ Versão do app não definida</div>';
+            
+            // Verificar dark mode
+            const darkMode = localStorage.getItem('darkMode');
+            html += darkMode === 'true'
+                ? '<div class="info">🌙 Dark Mode: Ativado</div>'
+                : '<div class="info">☀️ Dark Mode: Desativado</div>';
+            
+            // Verificar lista de compras
+            const shoppingList = localStorage.getItem('shoppingList');
+            if (shoppingList) {
+                const items = JSON.parse(shoppingList);
+                html += `<div class="success">✅ Lista de compras: ${items.length} itens</div>`;
+            } else {
+                html += '<div class="info">📝 Lista de compras: Vazia</div>';
+            }
+            
+            statusContainer.innerHTML = html;
+        }
+        
+        // Testar apresentação
+        function testarApresentacao() {
+            localStorage.removeItem('hasSeenPresentation');
+            localStorage.removeItem('appVersion');
+            alert('✅ Apresentação resetada! Na próxima vez que abrir o app, verá a tela de apresentação novamente.');
+            verificarStatus();
+        }
+        
+        // Testar localStorage
+        function testarLocalStorage() {
+            const keys = Object.keys(localStorage);
+            let info = `📊 LocalStorage tem ${keys.length} itens:\n\n`;
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                const preview = value.length > 50 ? value.substring(0, 50) + '...' : value;
+                info += `${key}: ${preview}\n`;
+            });
+            alert(info);
+        }
+        
+        // Limpar cache
+        function limparCache() {
+            if (confirm('⚠️ Isso vai limpar TODOS os dados do app. Tem certeza?')) {
+                localStorage.clear();
+                alert('✅ Cache limpo! Recarregue a página para ver o efeito.');
+                verificarStatus();
+            }
+        }
+        
+        // Abrir app
+        function abrirApp() {
+            window.location.href = '/';
+        }
+        
+        // Carregar status ao iniciar
+        verificarStatus();
+    </script>
+</body>
+</html>
+

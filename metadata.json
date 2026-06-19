@@ -1,0 +1,7 @@
+{
+  "name": "Lista de Compras Inteligente com Gemini IA",
+  "description": "Um aplicativo de lista de compras que utiliza IA para entender comandos de voz e texto, gerar listas personalizadas, sugerir itens e analisar seus hábitos de compra.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

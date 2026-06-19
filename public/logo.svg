@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="512" cy="512" r="512" fill="#4ECDC4" opacity="0.1"/>
+  
+  <!-- Shopping basket -->
+  <path d="M300 400h424c22 0 40 18 40 40v200c0 22-18 40-40 40H300c-22 0-40-18-40-40V440c0-22 18-40 40-40z" 
+        fill="#6BCB77" stroke="#2C8A85" stroke-width="4"/>
+  
+  <!-- Basket handle -->
+  <path d="M300 400c0-44 36-80 80-80h264c44 0 80 36 80 80" 
+        fill="none" stroke="#2C8A85" stroke-width="8" stroke-linecap="round"/>
+  
+  <!-- Food items in basket -->
+  <!-- Apple -->
+  <circle cx="380" cy="480" r="25" fill="#FF6B6B"/>
+  <path d="M380 455c0-8 3-15 8-20" fill="#8B0000" stroke="#8B0000" stroke-width="2"/>
+  
+  <!-- Bell pepper -->
+  <ellipse cx="480" cy="470" rx="20" ry="30" fill="#4ECDC4"/>
+  <path d="M480 440c0-5 2-10 5-15" fill="#2C8A85" stroke="#2C8A85" stroke-width="2"/>
+  
+  <!-- Milk carton -->
+  <rect x="580" y="460" width="30" height="40" fill="#FFFFFF" stroke="#2C8A85" stroke-width="2"/>
+  <rect x="585" y="465" width="20" height="30" fill="#FFD93D"/>
+  <text x="595" y="485" font-family="Arial" font-size="12" fill="#1a1a2e">LEITE</text>
+  
+  <!-- Grapes -->
+  <circle cx="420" cy="520" r="8" fill="#8B5CF6"/>
+  <circle cx="435" cy="515" r="8" fill="#8B5CF6"/>
+  <circle cx="405" cy="515" r="8" fill="#8B5CF6"/>
+  <circle cx="420" cy="535" r="8" fill="#8B5CF6"/>
+  
+  <!-- Banana -->
+  <path d="M520 520 Q540 510 550 530 Q560 550 540 560 Q520 570 500 550 Q490 530 500 510 Q510 500 520 520" 
+        fill="#FFD93D" stroke="#FFA500" stroke-width="2"/>
+  
+  <!-- Text "LISTA DE COMPRAS" -->
+  <text x="512" y="750" font-family="Arial, sans-serif" font-size="48" font-weight="bold" 
+        text-anchor="middle" fill="#FFFFFF">LISTA DE COMPRAS</text>
+  
+  <!-- Checkmark -->
+  <path d="M650 680 L680 710 L720 650" fill="none" stroke="#4ECDC4" stroke-width="8" 
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+
+
+
+
+

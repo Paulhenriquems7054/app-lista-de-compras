@@ -1,0 +1,59 @@
+{
+  "name": "Lista de Compras IA",
+  "short_name": "Lista IA",
+  "description": "Gerencie suas compras de forma inteligente com assistente de IA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#4ECDC4",
+  "orientation": "portrait",
+  "scope": "/",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/res/1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["shopping", "productivity", "lifestyle"],
+  "screenshots": [
+    {
+      "src": "/res/1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nova Lista",
+      "short_name": "Nova",
+      "description": "Criar nova lista de compras",
+      "url": "/?action=new",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Assistente IA",
+      "short_name": "IA",
+      "description": "Abrir assistente de IA",
+      "url": "/?view=assistente",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    }
+  ]
+}
+

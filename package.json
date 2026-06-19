@@ -1,0 +1,30 @@
+{
+  "name": "lista-de-compras-inteligente-com-gemini-ia",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
+    "@supabase/supabase-js": "2.49.4",
+    "autoprefixer": "^10.4.21",
+    "framer-motion": "^12.23.24",
+    "postcss": "^8.5.6",
+    "recharts": "^3.2.1",
+    "tailwindcss": "^3.4.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.10",
+    "@vitejs/plugin-react": "^4.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "5.8.3",
+    "vite": "^5.4.20"
+  }
+}

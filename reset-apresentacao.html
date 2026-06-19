@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Apresentação - Lista de Compras</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            text-align: center;
+            max-width: 500px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        h1 {
+            color: #4ECDC4;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #e0e0e0;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .button {
+            background: linear-gradient(135deg, #4ECDC4, #6BCB77);
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            color: #1a1a2e;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(78, 205, 196, 0.4);
+        }
+        .danger {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+            color: white;
+        }
+        .danger:hover {
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.4);
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(78, 205, 196, 0.2);
+            border: 1px solid #4ECDC4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Reset Apresentação</h1>
+        
+        <p>
+            Esta página permite resetar a configuração da apresentação, 
+            fazendo com que a tela de boas-vindas apareça novamente na próxima visita.
+        </p>
+        
+        <div>
+            <button class="button" onclick="resetPresentation()">
+                🔄 Resetar Apresentação
+            </button>
+            
+            <a href="/apresentacao.html" class="button">
+                🎨 Ver Apresentação Agora
+            </a>
+            
+            <a href="/index.html" class="button">
+                🏠 Ir para o App
+            </a>
+        </div>
+        
+        <div id="status" class="status" style="display: none;">
+            ✅ Apresentação resetada com sucesso!
+        </div>
+    </div>
+
+    <script>
+        function resetPresentation() {
+            // Remover as chaves do localStorage
+            localStorage.removeItem('hasSeenPresentation');
+            localStorage.removeItem('hasVisitedBefore');
+            
+            // Mostrar status
+            document.getElementById('status').style.display = 'block';
+            
+            // Redirecionar após 2 segundos
+            setTimeout(() => {
+                window.location.href = '/apresentacao.html';
+            }, 2000);
+        }
+        
+        // Verificar status atual
+        const hasSeen = localStorage.getItem('hasSeenPresentation');
+        const hasVisited = localStorage.getItem('hasVisitedBefore');
+        
+        console.log('Status atual:');
+        console.log('- hasSeenPresentation:', hasSeen);
+        console.log('- hasVisitedBefore:', hasVisited);
+    </script>
+</body>
+</html>

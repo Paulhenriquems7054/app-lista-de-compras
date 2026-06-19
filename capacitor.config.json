@@ -1,0 +1,25 @@
+{
+  "appId": "com.listacompras.ia",
+  "appName": "Lista de Compras IA",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "allowNavigation": [
+      "https://aistudiocdn.com/*",
+      "https://fonts.googleapis.com/*",
+      "https://fonts.gstatic.com/*"
+    ]
+  },
+  "android": {
+    "path": "android",
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true,
+    "buildOptions": {
+      "keystorePath": "",
+      "keystorePassword": "",
+      "keystoreAlias": "",
+      "keystoreAliasPassword": ""
+    }
+  }
+}

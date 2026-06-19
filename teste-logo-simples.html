@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Logo Simples</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .test-container {
+            text-align: center;
+            max-width: 600px;
+        }
+        .logo-test {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            border: 4px solid #4ECDC4;
+            margin: 20px 0;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            background: rgba(78, 205, 196, 0.2);
+            border: 1px solid #4ECDC4;
+        }
+        .error {
+            background: rgba(255, 99, 99, 0.2);
+            border: 1px solid #ff6363;
+        }
+        .success {
+            background: rgba(107, 203, 119, 0.2);
+            border: 1px solid #6BCB77;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🔍 Teste Logo - Diagnóstico</h1>
+        
+        <div id="status" class="status">
+            ⏳ Verificando carregamento...
+        </div>
+        
+        <h2>📸 Logo 1024.png</h2>
+        <img src="/res/1024.png" alt="Logo teste" class="logo-test" 
+             onload="logoCarregado()" onerror="logoErro()">
+        
+        <div class="status">
+            <strong>📋 Informações:</strong><br>
+            • URL: <code>/res/1024.png</code><br>
+            • Servidor: <span id="server-status">Verificando...</span><br>
+            • Status: <span id="logo-status">Aguardando...</span>
+        </div>
+        
+        <button onclick="testarNovamente()" style="
+            background: linear-gradient(135deg, #4ECDC4, #6BCB77);
+            border: none; padding: 15px 30px; border-radius: 25px;
+            color: white; font-weight: bold; cursor: pointer;
+            margin: 10px;">
+            🔄 Testar Novamente
+        </button>
+        
+        <a href="/apresentacao.html" style="
+            background: linear-gradient(135deg, #6BCB77, #4ECDC4);
+            border: none; padding: 15px 30px; border-radius: 25px;
+            color: white; font-weight: bold; cursor: pointer;
+            text-decoration: none; display: inline-block; margin: 10px;">
+            🎨 Ir para Apresentação
+        </a>
+    </div>
+
+    <script>
+        let logoCarregadoCount = 0;
+        
+        function logoCarregado() {
+            logoCarregadoCount++;
+            document.getElementById('status').innerHTML = 
+                '✅ <strong>SUCESSO!</strong> Logo carregado corretamente!';
+            document.getElementById('status').className = 'status success';
+            document.getElementById('logo-status').textContent = '✅ Carregado';
+            
+            console.log('✅ Logo carregado com sucesso!');
+        }
+        
+        function logoErro() {
+            document.getElementById('status').innerHTML = 
+                '❌ <strong>ERRO!</strong> Não foi possível carregar o logo.';
+            document.getElementById('status').className = 'status error';
+            document.getElementById('logo-status').textContent = '❌ Erro';
+            
+            console.error('❌ Erro ao carregar logo');
+        }
+        
+        function testarNovamente() {
+            location.reload();
+        }
+        
+        // Verificar servidor
+        fetch('/res/1024.png')
+            .then(response => {
+                if (response.ok) {
+                    document.getElementById('server-status').textContent = '✅ Online';
+                    console.log('✅ Servidor respondendo');
+                } else {
+                    document.getElementById('server-status').textContent = '❌ Erro ' + response.status;
+                    console.error('❌ Erro do servidor:', response.status);
+                }
+            })
+            .catch(error => {
+                document.getElementById('server-status').textContent = '❌ Sem conexão';
+                console.error('❌ Erro de conexão:', error);
+            });
+        
+        // Log inicial
+        console.log('🔍 Iniciando teste do logo...');
+        console.log('📍 URL: /res/1024.png');
+    </script>
+</body>
+</html>
+
+
+
+
+
+

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Organização Título</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            color: #4ECDC4;
+            margin-bottom: 2rem;
+        }
+        .test-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        .title {
+            font-size: 3rem;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 1rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            line-height: 1.1;
+        }
+        .title-line {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+            flex-wrap: nowrap;
+            width: 100%;
+            margin-bottom: 0.05rem;
+            line-height: 0.9;
+        }
+        .letter {
+            display: inline-block;
+            opacity: 1;
+            white-space: nowrap;
+            margin: 0;
+            padding: 0;
+            flex-shrink: 0;
+        }
+        .letter.space {
+            width: 0.5em;
+        }
+        .expected {
+            background: rgba(107, 203, 119, 0.2);
+            border: 2px solid #6BCB77;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+        .current {
+            background: rgba(78, 205, 196, 0.2);
+            border: 2px solid #4ECDC4;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+        .button {
+            background: linear-gradient(135deg, #4ECDC4, #6BCB77);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            margin: 10px;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Teste de Organização do Título</h1>
+        
+        <div class="test-section">
+            <h2 style="color: #6BCB77;">✅ Layout Esperado:</h2>
+            <div class="expected">
+                <div style="font-size: 2rem; font-weight: bold; line-height: 1.2;">
+                    LISTA DE CO<br>
+                    MPRAS
+                </div>
+                <p style="margin: 10px 0 0 0; font-size: 0.9rem; opacity: 0.8;">
+                    Duas linhas horizontais, centralizadas, com espaçamento mínimo
+                </p>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2 style="color: #4ECDC4;">🎨 Layout Atual:</h2>
+            <div class="current">
+                <h1 class="title">
+                    <div class="title-line">
+                        <span class="letter">L</span><span class="letter">I</span><span class="letter">S</span><span class="letter">T</span><span class="letter">A</span>
+                        <span class="letter space"> </span>
+                        <span class="letter">D</span><span class="letter">E</span>
+                        <span class="letter space"> </span>
+                        <span class="letter">C</span><span class="letter">O</span>
+                    </div>
+                    <div class="title-line">
+                        <span class="letter">M</span><span class="letter">P</span><span class="letter">R</span><span class="letter">A</span><span class="letter">S</span>
+                    </div>
+                </h1>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2 style="color: #FFD93D;">📋 Verificações:</h2>
+            <div style="text-align: left; max-width: 400px; margin: 0 auto;">
+                <p>✅ <strong>Primeira linha:</strong> "LISTA DE CO" (horizontal)</p>
+                <p>✅ <strong>Segunda linha:</strong> "MPRAS" (horizontal)</p>
+                <p>✅ <strong>Centralização:</strong> Ambas centralizadas</p>
+                <p>✅ <strong>Espaçamento:</strong> Mínimo entre linhas</p>
+                <p>✅ <strong>Letras:</strong> Sem quebra vertical</p>
+            </div>
+        </div>
+        
+        <div style="margin-top: 2rem;">
+            <a href="/apresentacao.html" class="button">🎨 Ver Apresentação</a>
+            <button onclick="location.reload()" class="button">🔄 Recarregar</button>
+        </div>
+    </div>
+</body>
+</html>

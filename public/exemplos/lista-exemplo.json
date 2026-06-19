@@ -1,0 +1,102 @@
+{
+  "lista": "Lista de Compras do Mês",
+  "data": "2025-10-12",
+  "items": [
+    {
+      "nome": "Leite Integral",
+      "quantidade": "2L",
+      "categoria": "Laticínios",
+      "preco_medio": 5.50,
+      "frequencia": 8,
+      "dias_entre_compras": 4
+    },
+    {
+      "nome": "Pão Francês",
+      "quantidade": "6un",
+      "categoria": "Padaria",
+      "preco_medio": 1.20,
+      "frequencia": 15,
+      "dias_entre_compras": 2
+    },
+    {
+      "nome": "Arroz Branco",
+      "quantidade": "5kg",
+      "categoria": "Mercearia",
+      "preco_medio": 25.90,
+      "frequencia": 4,
+      "dias_entre_compras": 30
+    },
+    {
+      "nome": "Feijão Preto",
+      "quantidade": "1kg",
+      "categoria": "Mercearia",
+      "preco_medio": 8.50,
+      "frequencia": 6,
+      "dias_entre_compras": 15
+    },
+    {
+      "nome": "Carne Moída",
+      "quantidade": "1kg",
+      "categoria": "Carnes",
+      "preco_medio": 28.00,
+      "frequencia": 10,
+      "dias_entre_compras": 7
+    },
+    {
+      "nome": "Frango Inteiro",
+      "quantidade": "1kg",
+      "categoria": "Carnes",
+      "preco_medio": 12.90,
+      "frequencia": 8,
+      "dias_entre_compras": 10
+    },
+    {
+      "nome": "Banana Prata",
+      "quantidade": "1kg",
+      "categoria": "Frutas",
+      "preco_medio": 6.90,
+      "frequencia": 12,
+      "dias_entre_compras": 5
+    },
+    {
+      "nome": "Tomate",
+      "quantidade": "1kg",
+      "categoria": "Verduras",
+      "preco_medio": 5.50,
+      "frequencia": 10,
+      "dias_entre_compras": 7
+    },
+    {
+      "nome": "Detergente",
+      "quantidade": "3un",
+      "categoria": "Limpeza",
+      "preco_medio": 3.50,
+      "frequencia": 5,
+      "dias_entre_compras": 20
+    },
+    {
+      "nome": "Shampoo",
+      "quantidade": "400ml",
+      "categoria": "Higiene",
+      "preco_medio": 12.90,
+      "frequencia": 3,
+      "dias_entre_compras": 45
+    },
+    {
+      "nome": "Refrigerante",
+      "quantidade": "2L",
+      "categoria": "Bebidas",
+      "preco_medio": 6.50,
+      "frequencia": 7,
+      "dias_entre_compras": 10
+    },
+    {
+      "nome": "Café",
+      "quantidade": "500g",
+      "categoria": "Mercearia",
+      "preco_medio": 18.90,
+      "frequencia": 6,
+      "dias_entre_compras": 20
+    }
+  ]
+}
