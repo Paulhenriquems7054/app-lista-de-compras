@@ -256,7 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (supabase) {
       const { error } = await supabase.auth.resetPasswordForEmail(
         email.trim().toLowerCase(),
-        { redirectTo: window.location.origin },
+        { redirectTo: 'https://app-lista-de-compras-two.vercel.app/' },
       );
       if (error) return { error: translateAuthError(error.message) };
       return { error: null };
