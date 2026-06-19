@@ -747,28 +747,28 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                     </div>
                 </div>
             )}
-        </div>
 
-        {/* ── Comandos de Voz ─────────────────────────────────────────── */}
-        <VoiceCommandButton
-          context={{
-            items,
-            customCategories,
-            addItem,
-            deleteItem,
-            toggleItem,
-            addCustomCategory: (cat) => setCustomCategories(prev => [...prev, cat]),
-            removeCustomCategory: (id) => {
-              setItems(prev => prev.map(i =>
-                i.categoria === customCategories.find(c => c.id === id)?.name
-                  ? { ...i, categoria: Category.OUTROS }
-                  : i
-              ));
-              setCustomCategories(prev => prev.filter(c => c.id !== id));
-            },
-            currentCategory: Category.OUTROS,
-          }}
-        />
+            {/* ── Comandos de Voz ───────────────────────────────────────── */}
+            <VoiceCommandButton
+                context={{
+                    items,
+                    customCategories,
+                    addItem,
+                    deleteItem,
+                    toggleItem,
+                    addCustomCategory: (cat) => setCustomCategories(prev => [...prev, cat]),
+                    removeCustomCategory: (id) => {
+                        setItems(prev => prev.map(i =>
+                            i.categoria === customCategories.find(c => c.id === id)?.name
+                                ? { ...i, categoria: Category.OUTROS }
+                                : i
+                        ));
+                        setCustomCategories(prev => prev.filter(c => c.id !== id));
+                    },
+                    currentCategory: Category.OUTROS,
+                }}
+            />
+        </div>
     );
 }
 
