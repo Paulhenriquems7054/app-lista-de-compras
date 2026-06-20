@@ -326,14 +326,8 @@ export function parseVoiceCommand(rawText: string): ParsedCommand {
       ' ' +
       remainingText.slice(quantResult.end)
     ).trim();
-
-    // REGRA: se o usuário informou quantidade, a intenção é sempre
-    // adicionar/atualizar o item — nunca apenas marcar como comprado.
-    // Ex: "marcar 5 kg de açúcar" → ADD_OR_UPDATE_ITEM (não MARK_PURCHASED)
-    if (detectedIntent === 'MARK_PURCHASED') {
-      console.log(`[VOICE PARSER] Quantidade detectada com MARK_PURCHASED — promovendo para ADD_OR_UPDATE_ITEM`);
-      detectedIntent = 'ADD_OR_UPDATE_ITEM';
-    }
+    // Nota: MARK_PURCHASED com quantidade é tratado no executor —
+    // o item é localizado, a quantidade é atualizada e ele é marcado como comprado.
   }
 
   // ── FASE 4: Remover sufixos de "como comprado" ────────────────────────────

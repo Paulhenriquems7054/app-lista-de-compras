@@ -173,31 +173,44 @@ export function executeVoiceCommand(
       }
 
       const found = findItem(ctx.items, cmd.product);
-      if (!found) {
-        // Item não existe → criar e já marcar como comprado
-        const categoria = cmd.category ?? Category.OUTROS;
-        const newItem: Item = {
-          id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          nome:          cmd.product,
-          quantidade:    fmtQty(cmd.quantity, cmd.unit),
-          categoria,
-          comprado:      true,
-          frequencia:    1,
-          ultima_compra: new Date().toISOString(),
+
+      if (found) {
+        // Item encontrado — atualizar quantidade (se fornecida) e marcar como comprado
+        const changes: Partial<Item> = { comprado: true };
+
+        if (cmd.quantity) {
+          changes.quantidade = fmtQty(cmd.quantity, cmd.unit);
+        }
+
+        ctx.updateItem(found.id, changes);
+
+        // Se o item já estava comprado mas a quantidade mudou, não há problema
+        const qtyInfo = cmd.quantity ? `. Quantidade: ${fmtQty(cmd.quantity, cmd.unit)}` : '';
+        const alreadyMsg = found.comprado ? ` (já estava marcado)` : '';
+        log(cmd, `Localizado e marcado como comprado: "${found.nome}"${qtyInfo}`);
+        return {
+          success: true,
+          message: `✔️ "${found.nome}" marcado como comprado${alreadyMsg}${qtyInfo}.`,
         };
-        ctx.addItem(newItem);
-        log(cmd, `Criado e marcado como comprado: "${cmd.product}"`);
-        return { success: true, message: `✔️ "${cmd.product}" adicionado e marcado como comprado.` };
       }
 
-      if (found.comprado) {
-        log(cmd, `Já estava comprado: "${found.nome}"`);
-        return { success: false, message: `ℹ️ "${found.nome}" já está marcado como comprado.` };
-      }
-
-      ctx.toggleItem(found.id);
-      log(cmd, `Marcado como comprado: "${found.nome}"`);
-      return { success: true, message: `✔️ "${found.nome}" marcado como comprado.` };
+      // Item não existe → criar na categoria correta e já marcar como comprado
+      const categoria = cmd.category ?? Category.OUTROS;
+      const newItem: Item = {
+        id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        nome:          cmd.product,
+        quantidade:    fmtQty(cmd.quantity, cmd.unit),
+        categoria,
+        comprado:      true,
+        frequencia:    1,
+        ultima_compra: new Date().toISOString(),
+      };
+      ctx.addItem(newItem);
+      log(cmd, `Criado e marcado como comprado: "${cmd.product}" em ${categoria}`);
+      return {
+        success: true,
+        message: `✔️ "${cmd.product}" adicionado em ${categoria} e marcado como comprado.`,
+      };
     }
 
     // ── Criar categoria ───────────────────────────────────────────────────────
