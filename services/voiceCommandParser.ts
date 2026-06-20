@@ -192,6 +192,7 @@ const ACTION_PREFIXES: Record<string, VoiceIntent> = {
   'novo item ':       'ADD_OR_UPDATE_ITEM',
   'nova ':            'ADD_OR_UPDATE_ITEM',
   'novo ':            'ADD_OR_UPDATE_ITEM',
+  // "marcar" e "concluir" — podem virar ADD_OR_UPDATE_ITEM se houver quantidade
   'marcar ':          'MARK_PURCHASED',
   'concluir ':        'MARK_PURCHASED',
   'finalizar ':       'MARK_PURCHASED',
@@ -300,7 +301,13 @@ export function parseVoiceCommand(rawText: string): ParsedCommand {
   }
 
   if (detectedIntent === 'UNKNOWN') {
-    console.log(`[VOICE] Texto: ${rawText} | Action: unknown | Nenhum padrão encontrado`);
+    console.log(
+      `[VOICE PARSER]\n` +
+      `  Texto:      ${rawText}\n` +
+      `  Normalizado:${normalized}\n` +
+      `  Action:     unknown\n` +
+      `  Status:     FAILED — nenhum prefixo de ação reconhecido`
+    );
     return {
       intent: 'UNKNOWN', action: 'unknown',
       product: null, quantity: null, unit: null, category: null,
@@ -319,6 +326,14 @@ export function parseVoiceCommand(rawText: string): ParsedCommand {
       ' ' +
       remainingText.slice(quantResult.end)
     ).trim();
+
+    // REGRA: se o usuário informou quantidade, a intenção é sempre
+    // adicionar/atualizar o item — nunca apenas marcar como comprado.
+    // Ex: "marcar 5 kg de açúcar" → ADD_OR_UPDATE_ITEM (não MARK_PURCHASED)
+    if (detectedIntent === 'MARK_PURCHASED') {
+      console.log(`[VOICE PARSER] Quantidade detectada com MARK_PURCHASED — promovendo para ADD_OR_UPDATE_ITEM`);
+      detectedIntent = 'ADD_OR_UPDATE_ITEM';
+    }
   }
 
   // ── FASE 4: Remover sufixos de "como comprado" ────────────────────────────
@@ -362,9 +377,15 @@ export function parseVoiceCommand(rawText: string): ParsedCommand {
     detectedIntent === 'MARK_PURCHASED'     ? 'mark_purchased'     : 'unknown';
 
   console.log(
-    `[VOICE] Texto: ${rawText} | Action: ${action} | Product: ${productDisplay}` +
-    ` | Quantity: ${quantResult?.quantity ?? 'null'} | Unit: ${quantResult?.unit ?? 'null'}` +
-    ` | Category: ${category}`
+    `[VOICE PARSER]\n` +
+    `  Texto:      ${rawText}\n` +
+    `  Normalizado:${normalized}\n` +
+    `  Action:     ${action}\n` +
+    `  Product:    ${productDisplay}\n` +
+    `  Quantity:   ${quantResult?.quantity ?? 'null'}\n` +
+    `  Unit:       ${quantResult?.unit ?? 'null'}\n` +
+    `  Category:   ${category}\n` +
+    `  Status:     SUCCESS`
   );
 
   return {
