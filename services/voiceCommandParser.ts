@@ -19,7 +19,8 @@ import { categorizeProduct } from './voiceProductCatalog';
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
 
 export type VoiceIntent =
-  | 'ADD_OR_UPDATE_ITEM'   // criar item novo ou atualizar existente
+  | 'CREATE_CATALOG_ITEM'  // criar item no catálogo (sem adicionar ao Modo Compras)
+  | 'ADD_TO_SHOPPING_LIST' // adicionar item à lista ativa de compras
   | 'REMOVE_ITEM'
   | 'MARK_PURCHASED'
   | 'CREATE_CATEGORY'
@@ -28,7 +29,9 @@ export type VoiceIntent =
 
 /** Mantido para compatibilidade com o executor */
 export type VoiceAction =
-  | 'add_or_update_item'
+  | 'create_catalog_item'
+  | 'add_to_shopping_list'
+  | 'add_or_update_item'   // mantido por compatibilidade
   | 'remove_item'
   | 'mark_purchased'
   | 'create_category'
@@ -174,35 +177,43 @@ function extractQuantity(text: string): QuantityResult | null {
 // ─── Verbos de ação e seus padrões ───────────────────────────────────────────
 
 const ACTION_PREFIXES: Record<string, VoiceIntent> = {
-  // ADD_OR_UPDATE_ITEM
-  'adicionar ':       'ADD_OR_UPDATE_ITEM',
-  'comprar ':         'ADD_OR_UPDATE_ITEM',
-  'preciso de ':      'ADD_OR_UPDATE_ITEM',
-  'preciso do ':      'ADD_OR_UPDATE_ITEM',
-  'preciso da ':      'ADD_OR_UPDATE_ITEM',
-  'quero ':           'ADD_OR_UPDATE_ITEM',
-  'anotar ':          'ADD_OR_UPDATE_ITEM',
-  'anota ':           'ADD_OR_UPDATE_ITEM',
-  'botar ':           'ADD_OR_UPDATE_ITEM',
-  'colocar ':         'ADD_OR_UPDATE_ITEM',
-  'inserir ':         'ADD_OR_UPDATE_ITEM',
-  'incluir ':         'ADD_OR_UPDATE_ITEM',
-  'criar item ':      'ADD_OR_UPDATE_ITEM',
-  'criar ':           'ADD_OR_UPDATE_ITEM',
-  'novo item ':       'ADD_OR_UPDATE_ITEM',
-  'nova ':            'ADD_OR_UPDATE_ITEM',
-  'novo ':            'ADD_OR_UPDATE_ITEM',
-  // "marcar" e "concluir" — podem virar ADD_OR_UPDATE_ITEM se houver quantidade
-  'marcar ':          'MARK_PURCHASED',
-  'concluir ':        'MARK_PURCHASED',
-  'finalizar ':       'MARK_PURCHASED',
+  // ADD_TO_SHOPPING_LIST — palavras que significam "colocar na lista ativa"
+  'adicionar ':         'ADD_TO_SHOPPING_LIST',
+  'comprar ':           'ADD_TO_SHOPPING_LIST',
+  'preciso de ':        'ADD_TO_SHOPPING_LIST',
+  'preciso do ':        'ADD_TO_SHOPPING_LIST',
+  'preciso da ':        'ADD_TO_SHOPPING_LIST',
+  'quero ':             'ADD_TO_SHOPPING_LIST',
+  'anotar ':            'ADD_TO_SHOPPING_LIST',
+  'anota ':             'ADD_TO_SHOPPING_LIST',
+  'botar ':             'ADD_TO_SHOPPING_LIST',
+  'colocar ':           'ADD_TO_SHOPPING_LIST',
+  'colocar na lista ':  'ADD_TO_SHOPPING_LIST',
+  'inserir ':           'ADD_TO_SHOPPING_LIST',
+  'incluir ':           'ADD_TO_SHOPPING_LIST',
+  'incluir na compra ': 'ADD_TO_SHOPPING_LIST',
+
+  // CREATE_CATALOG_ITEM — palavras que significam "criar no catálogo"
+  'criar item ':        'CREATE_CATALOG_ITEM',
+  'criar ':             'CREATE_CATALOG_ITEM',
+  'novo item ':         'CREATE_CATALOG_ITEM',
+  'nova ':              'CREATE_CATALOG_ITEM',
+  'novo ':              'CREATE_CATALOG_ITEM',
+  'cadastrar item ':    'CREATE_CATALOG_ITEM',
+  'cadastrar ':         'CREATE_CATALOG_ITEM',
+
+  // MARK_PURCHASED
+  'marcar ':            'MARK_PURCHASED',
+  'concluir ':          'MARK_PURCHASED',
+  'finalizar ':         'MARK_PURCHASED',
+
   // REMOVE_ITEM
-  'remover ':         'REMOVE_ITEM',
-  'excluir ':         'REMOVE_ITEM',
-  'apagar ':          'REMOVE_ITEM',
-  'deletar ':         'REMOVE_ITEM',
-  'tirar ':           'REMOVE_ITEM',
-  'retirar ':         'REMOVE_ITEM',
+  'remover ':           'REMOVE_ITEM',
+  'excluir ':           'REMOVE_ITEM',
+  'apagar ':            'REMOVE_ITEM',
+  'deletar ':           'REMOVE_ITEM',
+  'tirar ':             'REMOVE_ITEM',
+  'retirar ':           'REMOVE_ITEM',
 };
 
 // Prefixos de categoria (verificados ANTES dos prefixos de item)
@@ -366,20 +377,20 @@ export function parseVoiceCommand(rawText: string): ParsedCommand {
 
   const productDisplay = capitalize(productText);
   const action: VoiceAction =
-    detectedIntent === 'ADD_OR_UPDATE_ITEM' ? 'add_or_update_item' :
-    detectedIntent === 'REMOVE_ITEM'        ? 'remove_item'        :
-    detectedIntent === 'MARK_PURCHASED'     ? 'mark_purchased'     : 'unknown';
+    detectedIntent === 'ADD_TO_SHOPPING_LIST' ? 'add_to_shopping_list' :
+    detectedIntent === 'CREATE_CATALOG_ITEM'  ? 'create_catalog_item'  :
+    detectedIntent === 'REMOVE_ITEM'          ? 'remove_item'          :
+    detectedIntent === 'MARK_PURCHASED'       ? 'mark_purchased'       : 'unknown';
 
   console.log(
-    `[VOICE PARSER]\n` +
-    `  Texto:      ${rawText}\n` +
-    `  Normalizado:${normalized}\n` +
-    `  Action:     ${action}\n` +
-    `  Product:    ${productDisplay}\n` +
-    `  Quantity:   ${quantResult?.quantity ?? 'null'}\n` +
-    `  Unit:       ${quantResult?.unit ?? 'null'}\n` +
-    `  Category:   ${category}\n` +
-    `  Status:     SUCCESS`
+    `[VOICE]\n` +
+    `  Texto:     ${rawText}\n` +
+    `  Intent:    ${detectedIntent}\n` +
+    `  Produto:   ${productDisplay}\n` +
+    `  Quantidade:${quantResult?.quantity ?? 'null'}\n` +
+    `  Unidade:   ${quantResult?.unit ?? 'null'}\n` +
+    `  Categoria: ${category}\n` +
+    `  Resultado: ${detectedIntent === 'CREATE_CATALOG_ITEM' ? 'Criar no catálogo' : 'Adicionar ao Modo Compras'}`
   );
 
   return {
@@ -399,15 +410,18 @@ export function parseVoiceCommand(rawText: string): ParsedCommand {
 
 export function describeCommand(cmd: ParsedCommand): string {
   switch (cmd.intent) {
-    case 'ADD_OR_UPDATE_ITEM': {
+    case 'ADD_TO_SHOPPING_LIST': {
       const qty = cmd.quantity ? `${cmd.quantity} ${cmd.unit ?? 'un'}` : null;
       return `✅ ${cmd.product}${qty ? ` — ${qty}` : ''}${cmd.category ? ` (${cmd.category})` : ''}`;
+    }
+    case 'CREATE_CATALOG_ITEM': {
+      return `📋 Criado no catálogo: "${cmd.product}"${cmd.category ? ` (${cmd.category})` : ''}`;
     }
     case 'REMOVE_ITEM':      return `🗑️ Remover: "${cmd.product}"`;
     case 'MARK_PURCHASED':   return `✔️ Comprado: "${cmd.product}"`;
     case 'CREATE_CATEGORY':  return `📁 Nova categoria: "${cmd.entity}"`;
     case 'REMOVE_CATEGORY':  return `🗑️ Remover categoria: "${cmd.entity}"`;
     default:
-      return '❓ Comando não reconhecido. Tente: "comprar 5 quilos de arroz", "adicionar leite", "criar categoria pet".';
+      return '❓ Comando não reconhecido. Tente: "adicionar 5 kg de arroz", "criar sabão em barra", "criar categoria pet".';
   }
 }

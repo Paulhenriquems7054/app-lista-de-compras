@@ -107,7 +107,48 @@ export function executeVoiceCommand(
 
   switch (cmd.action) {
 
-    // ── Adicionar ou atualizar item ───────────────────────────────────────────
+    // ── Criar item no catálogo (SEM adicionar ao Modo Compras) ────────────────
+    case 'create_catalog_item': {
+      if (!cmd.product) {
+        log(cmd, 'Erro: produto vazio');
+        return { success: false, message: 'Nome do produto não informado.' };
+      }
+
+      const categoria = cmd.category ?? Category.OUTROS;
+      const existing  = findItem(ctx.items, cmd.product);
+
+      if (existing) {
+        log(cmd, `Item já existe no catálogo: "${existing.nome}"`);
+        return { success: false, message: `ℹ️ "${existing.nome}" já existe na categoria ${existing.categoria}.` };
+      }
+
+      const newItem: Item = {
+        id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        nome:          cmd.product,
+        quantidade:    fmtQty(cmd.quantity, cmd.unit),
+        unidade:       cmd.unit ?? 'un',
+        categoria,
+        comprado:      false,
+        selecionado:   false,   // NÃO vai para Modo Compras
+        frequencia:    1,
+        ultima_compra: new Date().toISOString(),
+      };
+
+      ctx.addItem(newItem);
+
+      console.log(
+        `[VOICE]\n` +
+        `  Texto:     ${cmd.rawText}\n` +
+        `  Intent:    CREATE_CATALOG_ITEM\n` +
+        `  Produto:   ${cmd.product}\n` +
+        `  Categoria: ${categoria}\n` +
+        `  Resultado: Criado no catálogo`
+      );
+      return { success: true, message: `📋 "${cmd.product}" criado na categoria ${categoria}.` };
+    }
+
+    // ── Adicionar item ao Modo Compras (selecionado: true) ───────────────────
+    case 'add_to_shopping_list':
     case 'add_or_update_item': {
       if (!cmd.product) {
         log(cmd, 'Erro: produto vazio');
@@ -116,35 +157,51 @@ export function executeVoiceCommand(
 
       const quantidadeStr = fmtQty(cmd.quantity, cmd.unit);
       const categoria     = cmd.category ?? Category.OUTROS;
-
-      // ── Anti-duplicidade: verificar se item já existe ─────────────────────
-      const existing = findItem(ctx.items, cmd.product);
+      const existing      = findItem(ctx.items, cmd.product);
 
       if (existing) {
-        // Item encontrado → atualizar quantidade
-        ctx.updateItem(existing.id, { quantidade: quantidadeStr });
-
-        const msg = `✅ "${existing.nome}" atualizado. Quantidade: ${quantidadeStr}.`;
-        log(cmd, `Item atualizado: "${existing.nome}" → ${quantidadeStr}`);
-        return { success: true, message: msg };
+        // Atualiza quantidade e marca como selecionado para o Modo Compras
+        ctx.updateItem(existing.id, {
+          quantidade: quantidadeStr,
+          unidade:    cmd.unit ?? existing.unidade,
+          selecionado: true,
+        });
+        console.log(
+          `[VOICE]\n` +
+          `  Texto:     ${cmd.rawText}\n` +
+          `  Intent:    ADD_TO_SHOPPING_LIST\n` +
+          `  Produto:   ${existing.nome}\n` +
+          `  Quantidade:${quantidadeStr}\n` +
+          `  Resultado: Adicionado ao Modo Compras`
+        );
+        return { success: true, message: `✅ "${existing.nome}" adicionado ao Modo Compras. Quantidade: ${quantidadeStr}.` };
       }
 
-      // Item não existe → criar novo
+      // Item não existe → criar e já marcar como selecionado
       const newItem: Item = {
-        id:           `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        nome:         cmd.product,
-        quantidade:   quantidadeStr,
+        id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        nome:          cmd.product,
+        quantidade:    quantidadeStr,
+        unidade:       cmd.unit ?? 'un',
         categoria,
-        comprado:     false,
-        frequencia:   1,
+        comprado:      false,
+        selecionado:   true,   // vai para Modo Compras
+        frequencia:    1,
         ultima_compra: new Date().toISOString(),
       };
 
       ctx.addItem(newItem);
 
-      const msg = `✅ "${cmd.product}" adicionado em ${categoria}. Quantidade: ${quantidadeStr}.`;
-      log(cmd, `Item criado: "${cmd.product}" | Cat: ${categoria} | Qty: ${quantidadeStr}`);
-      return { success: true, message: msg };
+      console.log(
+        `[VOICE]\n` +
+        `  Texto:     ${cmd.rawText}\n` +
+        `  Intent:    ADD_TO_SHOPPING_LIST\n` +
+        `  Produto:   ${cmd.product}\n` +
+        `  Quantidade:${quantidadeStr}\n` +
+        `  Categoria: ${categoria}\n` +
+        `  Resultado: Adicionado ao Modo Compras`
+      );
+      return { success: true, message: `✅ "${cmd.product}" adicionado ao Modo Compras em ${categoria}.` };
     }
 
     // ── Remover item ──────────────────────────────────────────────────────────

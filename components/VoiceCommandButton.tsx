@@ -169,12 +169,13 @@ export const VoiceCommandButton: React.FC<VoiceCommandButtonProps> = ({ context 
 
           <div className="space-y-2 text-gray-600 dark:text-gray-400">
             {[
-              { cmd: 'adicionar arroz',           desc: 'Cria um item' },
-              { cmd: 'remover leite',             desc: 'Remove um item' },
-              { cmd: 'marcar pão como comprado',  desc: 'Marca como comprado' },
-              { cmd: 'comprar café',              desc: 'Marca como comprado' },
-              { cmd: 'criar categoria pet',       desc: 'Nova categoria' },
-              { cmd: 'excluir categoria pet',     desc: 'Remove categoria' },
+              { cmd: 'criar sabão em barra',       desc: 'Cria no catálogo' },
+              { cmd: 'adicionar arroz',             desc: 'Adiciona ao Modo Compras' },
+              { cmd: 'adicionar 5 kg de açúcar',    desc: 'Com quantidade' },
+              { cmd: 'remover leite',               desc: 'Remove um item' },
+              { cmd: 'marcar pão como comprado',    desc: 'Marca como comprado' },
+              { cmd: 'criar categoria pet',         desc: 'Nova categoria' },
+              { cmd: 'excluir categoria pet',       desc: 'Remove categoria' },
             ].map(({ cmd, desc }) => (
               <div key={cmd} className="flex gap-2 items-start">
                 <code className="bg-gray-100 dark:bg-gray-700 rounded px-1.5 py-0.5 text-xs text-mint-dark font-mono flex-shrink-0 mt-0.5">
