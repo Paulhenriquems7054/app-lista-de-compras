@@ -17,11 +17,19 @@ export interface Item {
   quantidade: string;
   categoria: Category;
   comprado: boolean;
+  selecionado?: boolean; // true = item está na lista de compras pendentes (CategoryModal)
   frequencia: number;
   ultima_compra: string;
   preco_medio?: number;
   historico_precos?: number[];
   dias_entre_compras?: number;
+  // Correção 3 — Observação
+  observacao?: string;
+  // Correção 4 — Controle de Preços
+  precoUnitario?: number;
+  localCompra?: string;
+  // Unidade de medida: unidade, kg, g, L, ml, cx, etc.
+  unidade?: string;
 }
 
 /** Um registro individual de compra — criado ao arquivar lista */
@@ -33,9 +41,26 @@ export interface PurchaseRecord {
   precoUnitario?: number;
   precoTotal?: number;
   dataCompra: string;   // ISO Date String
+  // Correção 6 — campos detalhados no histórico
+  localCompra?: string;
+  observacao?: string;
 }
 
-/** Estatísticas calculadas por produto */
+/**
+ * Correção 5/6 — Histórico agrupado por sessão de compra.
+ * Gerado ao clicar em "Finalizar Compras" / "Arquivar".
+ */
+export interface PurchaseHistory {
+  id: string;           // uuid da sessão
+  data: string;         // ISO Date String
+  itens: PurchaseRecord[];
+  totalItens: number;
+  valorTotal: number;   // soma de precoUnitario dos itens com preço
+}
+
+/** Estatísticas calculadas por produto
+ * Correção 7 — estrutura preparada para comparação de preços futura
+ */
 export interface ProductStats {
   nome: string;
   categoria: Category;
@@ -47,6 +72,10 @@ export interface ProductStats {
   mediaIntervaloDias: number;     // média de dias entre compras
   gastoTotal: number;             // soma de precoTotal
   precoMedio: number;             // média de precoUnitario
+  precoMinimo: number;            // menor preço registrado (Correção 7)
+  precoMaximo: number;            // maior preço registrado (Correção 7)
+  ultimoLocal?: string;           // último local de compra (Correção 7)
+  locaisFrequentes: string[];     // locais mais usados (Correção 7)
   evolucaoPrecos: number[];       // sequência de preços
   classificacao: ConsumoClassificacao;
   selos: Selo[];

@@ -1,21 +1,19 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Item, Category, ArchivedList, AppView, CustomCategory, PurchaseRecord } from './types';
+import { Item, Category, ArchivedList, AppView, CustomCategory, PurchaseRecord, PurchaseHistory } from './types';
 import { useUserStorage, migrateLeacyDataToUser } from './hooks/useUserStorage';
 import { useAuth, useSession } from './contexts/AuthContext';
 import { CATEGORIES } from './constants';
 import { AddItemModal } from './components/AddItemModal';
 import { CategoryModal } from './components/CategoryModal';
 import { Icon } from './components/Icon';
-import { Stats } from './components/Stats';
 import { SmartInsights } from './components/SmartInsights';
 import { BackupExport } from './components/BackupExport';
-import { PriceBudget } from './components/PriceBudget';
 import { Notifications } from './components/Notifications';
 import { ListSharing } from './components/ListSharing';
 import { AdvancedReports } from './components/AdvancedReports';
-import { ImportData } from './components/ImportData';
 import { DarkModeToggle } from './components/DarkModeToggle';
 import { ShoppingMode } from './components/ShoppingMode';
+import { HistoryView } from './components/HistoryView';
 import { ConsumptionDashboard } from './components/ConsumptionDashboard';
 import { useConsumptionStats } from './hooks/useConsumptionStats';
 import { AuthScreen } from './components/auth/AuthScreen';
@@ -70,7 +68,7 @@ interface AppMainProps {
 const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
     const [items, setItems] = useUserStorage<Item[]>(userId, 'shoppingList', []);
     const [archivedLists, setArchivedLists] = useUserStorage<ArchivedList[]>(userId, 'archivedLists', []);
-    const [purchaseHistory, setPurchaseHistory] = useUserStorage<PurchaseRecord[]>(userId, 'purchaseHistory', []);
+    const [purchaseHistory, setPurchaseHistory] = useUserStorage<PurchaseHistory[]>(userId, 'purchaseHistory', []);
     const [customCategories, setCustomCategories] = useUserStorage<CustomCategory[]>(userId, 'customCategories', []);
     const [view, setView] = useState<AppView>(AppView.LISTA);
     const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +79,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
 
     const [isCategoryModalOpen, setCategoryModalOpen] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+    const [categoryModalAutoDelete, setCategoryModalAutoDelete] = useState(false);
     
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
@@ -102,15 +101,34 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
     };
     
     const deleteItem = (id: string) => {
-        setItems(items.filter(item => item.id !== id));
+        setItems(prev => prev.filter(item => item.id !== id));
     };
 
     const toggleItem = (id: string) => {
-        setItems(items.map(item => item.id === id ? { ...item, comprado: !item.comprado } : item));
+        // Forma funcional evita closure stale — garante que o estado base
+        // seja sempre o mais recente, independente de re-renders intermediários
+        setItems(prev => prev.map(item =>
+            item.id === id ? { ...item, comprado: !item.comprado } : item
+        ));
+    };
+
+    // Alterna se o item está selecionado para a lista de compras (CategoryModal)
+    // Não altera "comprado" — esse status só muda no Modo Compras
+    const toggleSelecionado = (id: string) => {
+        setItems(prev => prev.map(item =>
+            item.id === id ? { ...item, selecionado: !item.selecionado } : item
+        ));
     };
 
     const handleOpenCategory = (category: Category) => {
         setSelectedCategory(category);
+        setCategoryModalAutoDelete(false);
+        setCategoryModalOpen(true);
+    };
+
+    const handleDeleteCategory = (category: Category) => {
+        setSelectedCategory(category);
+        setCategoryModalAutoDelete(true);
         setCategoryModalOpen(true);
     };
 
@@ -140,21 +158,36 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
         if (purchasedItems.length === 0) return;
 
         const now = new Date().toISOString();
-
-        // 1. Gerar PurchaseRecords para o histórico — ID com índice para evitar colisão
         const nowMs = Date.now();
-        const newRecords: PurchaseRecord[] = purchasedItems.map((item, idx) => ({
-            id: `${nowMs}-${idx}-${Math.random().toString(36).slice(2)}`,
-            itemNome: item.nome.trim().toLowerCase(),
-            categoria: item.categoria,
-            quantidade: item.quantidade,
-            precoUnitario: item.preco_medio,
-            precoTotal: item.preco_medio,
-            dataCompra: now,
-        }));
-        setPurchaseHistory(prev => [...prev, ...newRecords]);
 
-        // 2. Calcular dias_entre_compras para cada item recém-comprado e atualizar
+        // 1. Gerar snapshot completo dos itens comprados (Correções 3/6)
+        const newRecords: PurchaseRecord[] = purchasedItems.map((item, idx) => {
+            const preco = item.precoUnitario ?? item.preco_medio;
+            return {
+                id: `${nowMs}-${idx}-${Math.random().toString(36).slice(2)}`,
+                itemNome: item.nome.trim().toLowerCase(),
+                categoria: item.categoria,
+                quantidade: item.quantidade,
+                precoUnitario: preco,
+                precoTotal: preco,
+                dataCompra: now,
+                localCompra: item.localCompra,
+                observacao: item.observacao,
+            };
+        });
+
+        // 2. Agrupar em sessão PurchaseHistory (Correção 1)
+        const valorTotal = newRecords.reduce((s, r) => s + (r.precoUnitario ?? 0), 0);
+        const newSession: PurchaseHistory = {
+            id: `${nowMs}-${Math.random().toString(36).slice(2)}`,
+            data: now,
+            itens: newRecords,
+            totalItens: newRecords.length,
+            valorTotal,
+        };
+        setPurchaseHistory(prev => [...prev, newSession]);
+
+        // 3. Calcular dias_entre_compras para cada item recém-comprado
         const diasMap = new Map<string, number>();
         for (const item of purchasedItems) {
             if (item.ultima_compra) {
@@ -171,16 +204,13 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
             }
         }
 
-        // 3. Arquivar lista — uma única chamada setItems para evitar race condition
+        // 4. Remover comprados e atualizar intervalos — uma única chamada setItems
         setItems(prev => {
             const compradosIds = new Set(purchasedItems.map(p => p.id));
             return prev
                 .map(item => {
                     const novoDias = diasMap.get(item.id);
-                    if (novoDias !== undefined) {
-                        return { ...item, dias_entre_compras: novoDias };
-                    }
-                    return item;
+                    return novoDias !== undefined ? { ...item, dias_entre_compras: novoDias } : item;
                 })
                 .filter(item => !compradosIds.has(item.id));
         });
@@ -202,7 +232,10 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
         return { totalItems: total, purchasedItems: purchased, totalEstimado: estimado };
     }, [items]);
 
-    const consumptionStats = useConsumptionStats(purchaseHistory);
+    const consumptionStats = useConsumptionStats(
+        // Extrair todos os PurchaseRecord das sessões PurchaseHistory para o hook de stats
+        purchaseHistory.flatMap(session => session.itens),
+    );
 
     // Combinar categorias fixas + personalizadas
     const allCategories = useMemo(() => {
@@ -248,24 +281,21 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
             case AppView.COMPRAS:
                 return (
                     <ShoppingMode
-                        items={items}
+                        items={items.filter(i => i.selecionado || i.comprado)}
                         onToggleItem={toggleItem}
                         onDeleteItem={deleteItem}
+                        onEditItem={handleEditItem}
+                        onFinalize={handleArchiveList}
                         onExit={() => setView(AppView.LISTA)}
                     />
                 );
             case AppView.HISTORICO:
                 return (
-                    <div>
-                        <button 
-                            onClick={() => setView(AppView.LISTA)}
-                            className="flex items-center gap-2 mb-4 px-4 py-2 bg-mint hover:bg-mint-dark text-white rounded-lg transition-colors"
-                        >
-                            <span>←</span>
-                            <span>Voltar para Minhas Listas</span>
-                        </button>
-                        <Stats items={items} archivedLists={archivedLists} onRepeatList={handleRepeatList} />
-                    </div>
+                    <HistoryView
+                        history={purchaseHistory}
+                        onBack={() => setView(AppView.LISTA)}
+                        onDeleteHistory={(id) => setPurchaseHistory(prev => prev.filter(h => h.id !== id))}
+                    />
                 );
             case AppView.INSIGHTS:
                 return (
@@ -305,7 +335,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                                     className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-mint to-mint-dark text-white font-bold rounded-xl shadow-md hover:shadow-lg hover:scale-[1.01] transition-all text-base"
                                 >
                                     <span className="text-xl">🛒</span>
-                                    Iniciar Compras ({items.filter(i => !i.comprado).length} pendentes)
+                                    Iniciar Compras ({items.filter(i => i.selecionado && !i.comprado).length} pendentes)
                                 </button>
                             </div>
                         )}
@@ -314,16 +344,16 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                             {filteredCategories.map(({ name, icon, color, isCustom, customId }) => {
                                 const categoryItems = itemsByCategory[name] || [];
                                 const purchasedCount = categoryItems.filter(i => i.comprado).length;
-                                // Selos: pegar dos itens desta categoria no consumptionStats
                                 const categorySeals = consumptionStats.productStats
                                     .filter(p => p.categoria === name && p.selos.length > 0)
                                     .flatMap(p => p.selos);
                                 const uniqueSeals = [...new Set(categorySeals)].slice(0, 3);
                                 return (
-                                    <div key={name} className="relative group">
+                                    <div key={name} className="relative group flex flex-col">
+                                        {/* Card principal */}
                                         <div
                                             onClick={() => handleOpenCategory(name)}
-                                            className="relative p-4 rounded-lg shadow-md cursor-pointer transform hover:scale-105 transition-transform duration-200 bg-white dark:bg-dark-card h-full"
+                                            className="relative p-4 rounded-lg shadow-md cursor-pointer transform hover:scale-105 transition-transform duration-200 bg-white dark:bg-dark-card flex-1"
                                         >
                                             <div className="absolute top-2 right-2 text-2xl">{icon}</div>
                                             {uniqueSeals.length > 0 && (
@@ -337,25 +367,18 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                                                 <div className={`${color} h-1.5 rounded-full`} style={{ width: `${categoryItems.length > 0 ? (purchasedCount / categoryItems.length) * 100 : 0}%` }}></div>
                                             </div>
                                         </div>
-                                        {/* Botão excluir para categorias personalizadas */}
-                                        {isCustom && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (confirm(`Excluir a categoria "${name}"? Os itens dela serão movidos para Outros.`)) {
-                                                        // Mover itens para Outros
-                                                        setItems(prev => prev.map(i =>
-                                                            i.categoria === name ? { ...i, categoria: Category.OUTROS } : i
-                                                        ));
-                                                        setCustomCategories(prev => prev.filter(c => c.id !== customId));
-                                                    }
-                                                }}
-                                                className="absolute -top-2 -left-2 hidden group-hover:flex w-6 h-6 bg-red-500 text-white rounded-full items-center justify-center text-xs shadow-md hover:bg-red-600 transition-colors z-10"
-                                                title="Excluir categoria"
-                                            >
-                                                ✕
-                                            </button>
-                                        )}
+
+                                        {/* Botão excluir — sempre visível, abaixo do card */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteCategory(name);
+                                            }}
+                                            className="mt-1.5 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors border text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 border-red-200 dark:border-red-800"
+                                            title={`Excluir categoria "${name}"`}
+                                        >
+                                            🗑 Excluir categoria
+                                        </button>
                                     </div>
                                 );
                             })}
@@ -572,11 +595,9 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                                 {/* Ferramentas */}
                                 <div className="space-y-2 mb-6">
                                     <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Ferramentas</h3>
-                                    <ImportData onImport={setItems} showButton={true} />
                                     <BackupExport items={items} archivedLists={archivedLists} onImport={(items, archivedLists) => { setItems(items); setArchivedLists(archivedLists); }} showButton={true} />
-                                    <PriceBudget items={items} onUpdateItems={setItems} showButton={true} />
                                     <Notifications items={items} showButton={true} />
-                                    <AdvancedReports items={items} archivedLists={archivedLists} showButton={true} />
+                                    <AdvancedReports purchaseHistory={purchaseHistory} showButton={true} />
                                 </div>
                                 
                                 {/* Configurações */}
@@ -605,14 +626,36 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
             {selectedCategory && (
                 <CategoryModal
                     isOpen={isCategoryModalOpen}
-                    onClose={() => setCategoryModalOpen(false)}
+                    onClose={() => { setCategoryModalOpen(false); setCategoryModalAutoDelete(false); }}
                     category={selectedCategory}
                     items={itemsByCategory[selectedCategory] || []}
-                    onToggleItem={toggleItem}
+                    onToggleItem={toggleSelecionado}
                     onDeleteItem={deleteItem}
                     onEditItem={handleEditItem}
                     onAddItem={handleAddItemFromCategory}
                     onAddNewItem={addItem}
+                    autoOpenDeleteCategory={categoryModalAutoDelete}
+                    onDeleteAllItems={() => {
+                        setItems(prev => prev.filter(i => i.categoria !== selectedCategory));
+                    }}
+                    onDeleteCategory={
+                        customCategories.some(c => c.name === selectedCategory)
+                            ? (mode: 'move' | 'delete') => {
+                                if (mode === 'move') {
+                                    setItems(prev => prev.map(i =>
+                                        i.categoria === selectedCategory
+                                            ? { ...i, categoria: Category.OUTROS }
+                                            : i
+                                    ));
+                                } else {
+                                    setItems(prev => prev.filter(i => i.categoria !== selectedCategory));
+                                }
+                                setCustomCategories(prev =>
+                                    prev.filter(c => c.name !== selectedCategory)
+                                );
+                            }
+                            : undefined
+                    }
                 />
             )}
             

@@ -17,6 +17,8 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
   const [quantidade, setQuantidade] = useState('');
   const [categoria, setCategoria] = useState<Category>(Category.OUTROS);
   const [preco, setPreco] = useState('');
+  const [localCompra, setLocalCompra] = useState('');
+  const [observacao, setObservacao] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -25,12 +27,16 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
       setNome(itemToEdit.nome);
       setQuantidade(itemToEdit.quantidade);
       setCategoria(itemToEdit.categoria);
-      setPreco(itemToEdit.preco_medio?.toString() || '');
+      setPreco(itemToEdit.precoUnitario?.toString() || itemToEdit.preco_medio?.toString() || '');
+      setLocalCompra(itemToEdit.localCompra || '');
+      setObservacao(itemToEdit.observacao || '');
     } else {
       setNome('');
       setQuantidade('');
       setCategoria(Category.OUTROS);
       setPreco('');
+      setLocalCompra('');
+      setObservacao('');
     }
     setSuggestions([]);
     setShowSuggestions(false);
@@ -62,7 +68,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
     if (!nome.trim()) return;
     
     const precoNumerico = preco ? parseFloat(preco.replace(',', '.')) : undefined;
-    const historicoPrecos = itemToEdit?.historico_precos || [];
+    const historicoPrecos = itemToEdit?.historico_precos ? [...itemToEdit.historico_precos] : [];
     
     // Adicionar novo preço ao histórico se foi informado
     if (precoNumerico && precoNumerico > 0) {
@@ -81,7 +87,6 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
       const agora = new Date();
       const diasDecorridos = Math.floor((agora.getTime() - ultimaCompraDate.getTime()) / (1000 * 60 * 60 * 24));
       
-      // Média móvel simples dos dias entre compras
       diasEntreCompras = diasEntreCompras 
         ? (diasEntreCompras + diasDecorridos) / 2 
         : diasDecorridos;
@@ -98,6 +103,9 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
       preco_medio: precoMedio,
       historico_precos: historicoPrecos,
       dias_entre_compras: diasEntreCompras,
+      precoUnitario: precoNumerico && precoNumerico > 0 ? precoNumerico : itemToEdit?.precoUnitario,
+      localCompra: localCompra.trim() || itemToEdit?.localCompra,
+      observacao: observacao.trim() || undefined,
     };
     onSave(newItem);
     onClose();
@@ -152,7 +160,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
 
           <div>
             <label htmlFor="preco" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Preço (opcional)
+              Preço Unitário (opcional)
               {itemToEdit?.preco_medio && (
                 <span className="ml-2 text-xs text-gray-500">
                   Média: R$ {itemToEdit.preco_medio.toFixed(2)}
@@ -170,6 +178,34 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
                 placeholder="0,00"
               />
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="localCompra" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Local da Compra (opcional)
+            </label>
+            <input
+              type="text"
+              id="localCompra"
+              value={localCompra}
+              onChange={(e) => setLocalCompra(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-mint-dark focus:border-mint-dark"
+              placeholder="Ex: Atacadão, Assaí, Mercado da esquina"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="observacao" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Observação (opcional)
+            </label>
+            <input
+              type="text"
+              id="observacao"
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-mint-dark focus:border-mint-dark"
+              placeholder="Ex: Promoção somente na terça, Preço menor no Assaí"
+            />
           </div>
 
           <div>
