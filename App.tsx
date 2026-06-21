@@ -744,6 +744,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                     onToggleItem={toggleSelecionado}
                     onDeleteItem={deleteItem}
                     onEditItem={handleEditItem}
+                    onUpdateItem={(item) => setItems(prev => prev.map(i => i.id === item.id ? item : i))}
                     onAddItem={handleAddItemFromCategory}
                     onAddNewItem={addItem}
                     autoOpenDeleteCategory={categoryModalAutoDelete}

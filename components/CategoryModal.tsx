@@ -14,6 +14,7 @@ interface CategoryModalProps {
   onToggleItem: (id: string) => void;
   onDeleteItem: (id: string) => void;
   onEditItem: (item: Item) => void;
+  onUpdateItem: (item: Item) => void;
   onAddItem: (category: Category) => void;
   onAddNewItem?: (item: Item) => void;
   onDeleteAllItems?: () => void;
@@ -125,6 +126,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
   onToggleItem,
   onDeleteItem,
   onEditItem,
+  onUpdateItem,
   onAddItem,
   onAddNewItem,
   onDeleteAllItems,
@@ -335,12 +337,12 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                           }
                         />
                       ) : (
-                        // Reais: controle inline de qty persistido via onEditItem
+                        // Reais: controle inline de qty persistido via onUpdateItem (sem abrir modal)
                         <QtyControl
                           value={String(currentNumeric)}
                           unidade={currentUnit}
                           disabled={item.comprado}
-                          onChange={(qty, unit) => onEditItem({ ...item, quantidade: qty, unidade: unit })}
+                          onChange={(qty, unit) => onUpdateItem({ ...item, quantidade: qty, unidade: unit })}
                         />
                       )}
 
