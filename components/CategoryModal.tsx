@@ -142,12 +142,15 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
   const [virtualChecked, setVirtualChecked] = useState<Record<string, boolean>>({});
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceInputValue, setPriceInputValue] = useState<string>('');
+  // IDs de sugestões dispensadas pelo usuário (excluídas da view)
+  const [dismissedVirtual, setDismissedVirtual] = useState<Set<string>>(new Set());
 
   // Sincronizar ao abrir/fechar
   React.useEffect(() => {
     if (isOpen) {
       setConfirmAction(autoOpenDeleteCategory ? 'category' : null);
       setConfirmDeleteId(null);
+      setDismissedVirtual(new Set());
     }
   }, [isOpen, autoOpenDeleteCategory]);
 
@@ -196,8 +199,9 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
         frequencia: 0,
         ultima_compra: new Date().toISOString(),
         isVirtual: true,
-      } as Item & { isVirtual: boolean }));
-  }, [suggestedItemsRaw, items, category]);
+      } as Item & { isVirtual: boolean }))
+      .filter(v => !dismissedVirtual.has(v.id));
+  }, [suggestedItemsRaw, items, category, dismissedVirtual]);
 
   const allItems = useMemo(() => [...items, ...virtualItems], [items, virtualItems]);
 
@@ -403,27 +407,48 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
 
                     {/* ── Ações ── */}
                     <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                      {!isVirtual && (
-                        // Real: Editar + Excluir
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => onEditItem(item)}
-                            className="p-1.5 rounded-lg text-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                            title={`Editar ${item.nome}`}
-                            aria-label={`Editar ${item.nome}`}
-                          >
-                            <Icon name="pencil" className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(item.id)}
-                            className="p-1.5 rounded-lg text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
-                            title={`Excluir ${item.nome}`}
-                            aria-label={`Excluir ${item.nome}`}
-                          >
-                            <Icon name="trash" className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {/* Editar — sempre visível e ativo em todos os itens */}
+                        <button
+                          onClick={() => {
+                            if (isVirtual && onAddNewItem) {
+                              // Cria o item e abre o editor
+                              const vq = virtualQty[item.id] || { qty: '1', unit: 'un' };
+                              const vp = virtualPrice[item.id];
+                              const newItem: Item = {
+                                id: new Date().toISOString() + item.nome,
+                                nome: item.nome,
+                                quantidade: formatQty(parseFloat(vq.qty) || 1, vq.unit),
+                                unidade: vq.unit,
+                                categoria: category,
+                                comprado: false,
+                                selecionado: false,
+                                frequencia: 1,
+                                ultima_compra: new Date().toISOString(),
+                                precoUnitario: vp ? parseFloat(vp) || undefined : undefined,
+                              };
+                              onAddNewItem(newItem);
+                              onEditItem(newItem);
+                            } else {
+                              onEditItem(item);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors cursor-pointer"
+                          title={`Editar ${item.nome}`}
+                          aria-label={`Editar ${item.nome}`}
+                        >
+                          <Icon name="pencil" className="h-4 w-4" />
+                        </button>
+                        {/* Excluir — sempre visível em todos os itens */}
+                        <button
+                          onClick={() => setConfirmDeleteId(item.id)}
+                          className="p-1.5 rounded-lg text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                          title={isVirtual ? `Remover sugestão ${item.nome}` : `Excluir ${item.nome}`}
+                          aria-label={`Excluir ${item.nome}`}
+                        >
+                          <Icon name="trash" className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -431,14 +456,21 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                   {awaitingDelete && (
                     <div className="mx-3 mb-3 p-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
                       <p className="text-sm text-red-700 dark:text-red-300 font-medium mb-2">
-                        Excluir "{item.nome}"?
+                        {isVirtual ? `Remover sugestão "${item.nome}"?` : `Excluir "${item.nome}"?`}
                       </p>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => { onDeleteItem(item.id); setConfirmDeleteId(null); }}
+                          onClick={() => {
+                            if (isVirtual) {
+                              setDismissedVirtual(prev => new Set([...prev, item.id]));
+                            } else {
+                              onDeleteItem(item.id);
+                            }
+                            setConfirmDeleteId(null);
+                          }}
                           className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition-colors"
                         >
-                          Excluir
+                          {isVirtual ? 'Remover' : 'Excluir'}
                         </button>
                         <button
                           onClick={() => setConfirmDeleteId(null)}

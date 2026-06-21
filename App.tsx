@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Item, Category, ArchivedList, AppView, CustomCategory, PurchaseRecord, PurchaseHistory } from './types';
 import { useUserStorage, migrateLeacyDataToUser } from './hooks/useUserStorage';
 import { useAuth, useSession } from './contexts/AuthContext';
-import { CATEGORIES } from './constants';
+import { CATEGORIES } from './constants.tsx';
+import { CATEGORY_ITEMS } from './categoryItems';
 import { AddItemModal } from './components/AddItemModal';
 import { CategoryModal } from './components/CategoryModal';
 import { Icon } from './components/Icon';
@@ -251,12 +252,41 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
 
     const filteredCategories = useMemo(() => {
         if (!searchQuery) return allCategories;
-        const lowercasedQuery = searchQuery.toLowerCase();
-        const categoryMatches = allCategories.filter(c => c.name.toLowerCase().includes(lowercasedQuery));
-        const itemMatches = items.filter(i => i.nome.toLowerCase().includes(lowercasedQuery)).map(i => i.categoria);
-        const matchedCategories = new Set([...categoryMatches.map(c => c.name), ...itemMatches]);
-        return allCategories.filter(c => matchedCategories.has(c.name));
+        const q = searchQuery.toLowerCase();
+        // Categorias cujo nome bate com a busca
+        const catNames = new Set(allCategories.filter(c => c.name.toLowerCase().includes(q)).map(c => c.name));
+        // Categorias que têm itens cujo nome bate com a busca
+        items.filter(i => i.nome.toLowerCase().includes(q)).forEach(i => catNames.add(i.categoria));
+        return allCategories.filter(c => catNames.has(c.name));
     }, [searchQuery, items, allCategories]);
+
+    // Itens que batem diretamente com a busca (para exibição em lista quando há query)
+    // Inclui itens criados pelo usuário + itens sugeridos do catálogo
+    const searchedItems = useMemo(() => {
+        if (!searchQuery) return [];
+        const q = searchQuery.toLowerCase().trim();
+
+        // 1. Itens reais criados pelo usuário
+        const realItems = items.filter(i => i.nome.toLowerCase().includes(q));
+        const realNames = new Set(realItems.map(i => i.nome.toLowerCase()));
+
+        // 2. Itens sugeridos do catálogo que ainda não foram criados
+        const suggestedResults: Array<{ id: string; nome: string; categoria: Category; isVirtual: true }> = [];
+        for (const cat of CATEGORY_ITEMS) {
+            for (const nome of cat.itens) {
+                if (nome.toLowerCase().includes(q) && !realNames.has(nome.toLowerCase())) {
+                    suggestedResults.push({
+                        id: `virtual-${nome}`,
+                        nome,
+                        categoria: cat.categoria,
+                        isVirtual: true,
+                    });
+                }
+            }
+        }
+
+        return [...realItems, ...suggestedResults];
+    }, [searchQuery, items]);
     
     const itemsByCategory = useMemo(() => {
         return items.reduce((acc, item) => {
@@ -328,7 +358,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                 return (
                     <div className="p-4 md:p-6">
                         {/* Botão Iniciar Compras */}
-                        {items.length > 0 && (
+                        {items.length > 0 && !searchQuery && (
                             <div className="mb-4">
                                 <button
                                     onClick={() => setView(AppView.COMPRAS)}
@@ -337,6 +367,70 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                                     <span className="text-xl">🛒</span>
                                     Iniciar Compras ({items.filter(i => i.selecionado && !i.comprado).length} pendentes)
                                 </button>
+                            </div>
+                        )}
+
+                        {/* ── Resultados de itens quando há busca ── */}
+                        {searchQuery && (
+                            <div className="mb-5">
+                                {searchedItems.length > 0 ? (
+                                    <>
+                                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
+                                            {searchedItems.length} {searchedItems.length === 1 ? 'item encontrado' : 'itens encontrados'}
+                                        </p>
+                                        <div className="space-y-2">
+                                            {searchedItems.map(item => {
+                                                const q = searchQuery.toLowerCase();
+                                                const idx = item.nome.toLowerCase().indexOf(q);
+                                                const before = item.nome.slice(0, idx);
+                                                const match  = item.nome.slice(idx, idx + searchQuery.length);
+                                                const after  = item.nome.slice(idx + searchQuery.length);
+                                                const isVirtual = (item as any).isVirtual === true;
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        onClick={() => handleOpenCategory(item.categoria)}
+                                                        className="flex items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-mint-dark dark:hover:border-mint transition-colors"
+                                                    >
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-semibold text-sm text-dark-gray dark:text-white">
+                                                                {before}
+                                                                <mark className="bg-mint/30 dark:bg-mint/20 text-mint-dark dark:text-mint rounded px-0.5">{match}</mark>
+                                                                {after}
+                                                            </p>
+                                                            <p className="text-xs text-gray-400 mt-0.5">
+                                                                {item.categoria}
+                                                                {isVirtual
+                                                                    ? <span className="ml-1.5 text-blue-400">· sugerido</span>
+                                                                    : <span className="ml-1.5">· {(item as any).quantidade}{(item as any).unidade ? ' ' + (item as any).unidade : ''}</span>
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                        {!isVirtual && (item as any).precoUnitario != null && (
+                                                            <span className="text-xs font-semibold text-mint-dark dark:text-mint shrink-0">
+                                                                R$ {(item as any).precoUnitario.toFixed(2)}
+                                                            </span>
+                                                        )}
+                                                        {isVirtual ? (
+                                                            <span className="text-xs text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full shrink-0">ver categoria</span>
+                                                        ) : (
+                                                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${(item as any).selecionado ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-500'}`}>
+                                                                {(item as any).selecionado && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 mb-1">Categorias com esses itens:</p>
+                                    </>
+                                ) : (
+                                    <div className="text-center py-6 text-gray-400 dark:text-gray-500">
+                                        <p className="text-3xl mb-2">🔍</p>
+                                        <p className="text-sm font-medium">Nenhum item encontrado para "<span className="text-dark-gray dark:text-white">{searchQuery}</span>"</p>
+                                        <p className="text-xs mt-1">Verifique o nome ou crie o item em uma categoria</p>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -479,7 +573,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                         </div>
                     </div>
                     
-                    {/* Linha 2: Campo de Busca */}
+                    {/* Linha 2: Campo de Busca + Microfone */}
                     <div className="mt-3 flex items-center gap-2">
                         <div className="relative flex-grow">
                              <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"/>
@@ -491,6 +585,24 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                                 className="w-full pl-10 pr-4 py-2 border rounded-full bg-light-gray dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-mint-dark"
                             />
                         </div>
+                        {/* Microfone inline no header */}
+                        <VoiceCommandButton
+                            context={{
+                                items,
+                                customCategories,
+                                addItem,
+                                updateItem: (id, changes) => setItems(prev =>
+                                    prev.map(i => i.id === id ? { ...i, ...changes } : i)
+                                ),
+                                deleteItem,
+                                toggleItem,
+                                addCustomCategory: (cat) => setCustomCategories(prev => [...prev, cat]),
+                                removeCustomCategory: (id) => {
+                                    setCustomCategories(prev => prev.filter(c => c.id !== id));
+                                },
+                            }}
+                            inline
+                        />
                     </div>
                 </div>
                 
@@ -792,28 +904,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                 </div>
             )}
 
-            {/* ── Comandos de Voz ───────────────────────────────────────── */}
-            <VoiceCommandButton
-                context={{
-                    items,
-                    customCategories,
-                    addItem,
-                    updateItem: (id, changes) => setItems(prev =>
-                        prev.map(i => i.id === id ? { ...i, ...changes } : i)
-                    ),
-                    deleteItem,
-                    toggleItem,
-                    addCustomCategory: (cat) => setCustomCategories(prev => [...prev, cat]),
-                    removeCustomCategory: (id) => {
-                        setItems(prev => prev.map(i =>
-                            i.categoria === customCategories.find(c => c.id === id)?.name
-                                ? { ...i, categoria: Category.OUTROS }
-                                : i
-                        ));
-                        setCustomCategories(prev => prev.filter(c => c.id !== id));
-                    },
-                }}
-            />
+            {/* ── Comandos de Voz (movido para o header) ───────────────── */}
         </div>
     );
 }
