@@ -86,12 +86,12 @@ function itemToDbPatch(item: Item, userId: string, coupleId: string | null) {
 }
 
 // ── Buscar couple_id do usuário ───────────────────────────────────────────────
-
-let _coupleIdCache: string | null | undefined = undefined; // undefined = não buscou ainda
+// REMOVIDO: cache de módulo (_coupleIdCache) causava bug quando o mesmo userId
+// era usado em sessões diferentes ou após vincular/desvincular casal.
+// O hook useShoppingSync gerencia o couple_id em ref própria.
 
 export async function getCoupleId(userId: string): Promise<string | null> {
   if (!supabase) return null;
-  if (_coupleIdCache !== undefined) return _coupleIdCache;
 
   const { data } = await supabase
     .from('profiles')
@@ -99,13 +99,12 @@ export async function getCoupleId(userId: string): Promise<string | null> {
     .eq('id', userId)
     .single();
 
-  _coupleIdCache = data?.couple_id ?? null;
-  return _coupleIdCache;
+  return data?.couple_id ?? null;
 }
 
-/** Invalida o cache de couple_id (usar após vincular/desvincular casal) */
+/** @deprecated Use o fetchCoupleId interno do useShoppingSync */
 export function invalidateCoupleIdCache() {
-  _coupleIdCache = undefined;
+  // sem-op — cache removido
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -143,14 +142,18 @@ export async function upsertItem(
 
   const patch = itemToDbPatch(item, userId, coupleId);
 
+  console.log('[shoppingService] upsertItem →', patch.nome, '| user:', userId, '| couple:', coupleId);
+
   const { error } = await supabase
     .from('shopping_items')
     .upsert(patch, { onConflict: 'id' });
 
   if (error) {
-    console.error('[shoppingService] upsertItem error:', error.message);
+    console.error('[shoppingService] upsertItem error:', error.message, error);
     return { error: error.message };
   }
+
+  console.log('[shoppingService] upsertItem ✅ gravado:', patch.nome);
   return { error: null };
 }
 

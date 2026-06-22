@@ -3,22 +3,18 @@
  *
  * Hook central de sincronização da lista de compras.
  *
+ * Suporte a dois cenários:
+ * 1. Mesma conta em dois dispositivos (userId igual)
+ * 2. Contas separadas vinculadas por couple_id
+ *
  * Estratégia:
  * - Supabase é a fonte de verdade quando disponível.
- * - localStorage é o cache offline (chave: `{userId}:shoppingList`).
- * - Realtime: canal Supabase escuta INSERT/UPDATE/DELETE em shopping_items
- *   e aplica o diff no estado React sem re-fetch completo.
- *
- * Modo offline (sem Supabase configurado):
- * - Tudo funciona via localStorage, sem erros.
- * - Ao reconectar (Supabase disponível), na próxima montagem sincroniza.
- *
- * Uso no App.tsx:
- *   const { items, addItem, updateItem, deleteItem, toggleItem,
- *           toggleSelecionado, isLoading, isSynced } = useShoppingSync(userId);
+ * - localStorage é cache offline.
+ * - Realtime: escuta INSERT/UPDATE/DELETE em shopping_items
+ *   filtrando por user_id OU couple_id.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Item } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import {
@@ -26,12 +22,12 @@ import {
   upsertItem,
   patchItem,
   deleteItem as dbDeleteItem,
-  getCoupleId,
   dbToItem,
   DbShoppingItem,
 } from '../services/shoppingService';
 
-// Chave de cache offline
+// ── Cache offline ─────────────────────────────────────────────────────────────
+
 const cacheKey = (userId: string) => `${userId}:shoppingList`;
 
 function readCache(userId: string): Item[] {
@@ -48,34 +44,48 @@ function readCache(userId: string): Item[] {
 function writeCache(userId: string, items: Item[]) {
   try {
     localStorage.setItem(cacheKey(userId), JSON.stringify(items));
-  } catch {
-    // QuotaExceededError — ignorar
-  }
+  } catch { /* QuotaExceededError — ignorar */ }
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+// ── Buscar couple_id diretamente (sem cache de módulo) ────────────────────────
+
+async function fetchCoupleId(userId: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from('profiles')
+    .select('couple_id')
+    .eq('id', userId)
+    .single();
+  return data?.couple_id ?? null;
+}
+
+// ── Tipos ─────────────────────────────────────────────────────────────────────
 
 export interface UseShoppingSyncReturn {
   items: Item[];
   isLoading: boolean;
-  isSynced: boolean; // true = dados vieram do Supabase
+  isSynced: boolean;
   addItem: (item: Item) => Promise<void>;
   updateItem: (item: Item) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
   toggleComprado: (id: string) => Promise<void>;
   toggleSelecionado: (id: string) => Promise<void>;
-  /** Substitui toda a lista (usado em import/restore) */
   setItems: React.Dispatch<React.SetStateAction<Item[]>>;
 }
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useShoppingSync(userId: string): UseShoppingSyncReturn {
   const [items, setItems] = useState<Item[]>(() => readCache(userId));
   const [isLoading, setIsLoading] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
+
+  // couple_id em ref para não causar re-render
   const coupleIdRef = useRef<string | null>(null);
+  // Ref do canal Realtime para cleanup
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null);
 
-  // ── Carga inicial + setup Realtime ────────────────────────────────────────
+  // ── Carga inicial + Realtime ────────────────────────────────────────────────
   useEffect(() => {
     if (!userId) {
       setIsLoading(false);
@@ -85,16 +95,15 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
     let cancelled = false;
 
     const init = async () => {
-      // 1. Buscar couple_id
-      coupleIdRef.current = await getCoupleId(userId);
-
       if (!supabase) {
-        // Modo offline — usar apenas cache
         setIsLoading(false);
         return;
       }
 
-      // 2. Carregar itens do Supabase
+      // 1. Buscar couple_id (sem cache de módulo — sempre fresco)
+      coupleIdRef.current = await fetchCoupleId(userId);
+
+      // 2. Carregar todos os itens visíveis (RLS retorna próprios + casal)
       const remoteItems = await fetchItems(userId);
       if (!cancelled) {
         setItems(remoteItems);
@@ -103,16 +112,27 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
         setIsLoading(false);
       }
 
-      // 3. Assinar canal Realtime
-      // Remove canal anterior se existir (troca de userId)
+      // 3. Cleanup canal anterior
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        await supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
 
+      // 4. Montar canal Realtime
+      //
+      // IMPORTANTE: usamos um nome de canal único por instância do browser
+      // para evitar conflito quando o mesmo userId abre em dois dispositivos.
+      // O UUID aleatório no nome garante que cada aba/dispositivo tenha
+      // seu próprio canal independente.
+      //
+      // Escutamos TODOS os eventos da tabela shopping_items sem filtro
+      // no canal — o RLS do Supabase já garante que só chegam eventos
+      // dos itens que o usuário tem permissão de ver (próprios + casal).
+      const channelId = `shopping_sync_${userId}_${Math.random().toString(36).slice(2, 8)}`;
+
       const channel = supabase
-        .channel(`shopping_items:${userId}`)
-        .on(
+        .channel(channelId)
+        .on<DbShoppingItem>(
           'postgres_changes',
           {
             event: '*',
@@ -122,36 +142,46 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
           (payload) => {
             if (cancelled) return;
 
-            const { eventType, new: newRow, old: oldRow } = payload;
+            const { eventType } = payload;
 
             setItems((prev) => {
-              let next: Item[];
-
               if (eventType === 'INSERT') {
-                const incoming = dbToItem(newRow as DbShoppingItem);
-                // Evita duplicata se o próprio usuário inseriu (já está no estado)
-                if (prev.some((i) => i.id === incoming.id)) return prev;
-                next = [...prev, incoming];
+                const incoming = dbToItem(payload.new as DbShoppingItem);
+                // Evita duplicata — optimistic update já adicionou localmente
+                if (prev.some((i) => i.id === incoming.id)) {
+                  // Atualiza mesmo assim para garantir que o estado remoto
+                  // (com id real do banco) sobrescreva o estado local
+                  return prev.map((i) => i.id === incoming.id ? incoming : i);
+                }
+                const next = [...prev, incoming];
+                writeCache(userId, next);
+                return next;
+
               } else if (eventType === 'UPDATE') {
-                const updated = dbToItem(newRow as DbShoppingItem);
-                next = prev.map((i) => (i.id === updated.id ? updated : i));
+                const updated = dbToItem(payload.new as DbShoppingItem);
+                const next = prev.map((i) => i.id === updated.id ? updated : i);
+                writeCache(userId, next);
+                return next;
+
               } else if (eventType === 'DELETE') {
-                const deletedId = (oldRow as { id: string }).id;
-                next = prev.filter((i) => i.id !== deletedId);
-              } else {
-                return prev;
+                const deletedId = (payload.old as { id: string }).id;
+                const next = prev.filter((i) => i.id !== deletedId);
+                writeCache(userId, next);
+                return next;
               }
 
-              writeCache(userId, next);
-              return next;
+              return prev;
             });
           },
         )
-        .subscribe((status) => {
+        .subscribe((status, err) => {
+          if (cancelled) return;
           if (status === 'SUBSCRIBED') {
-            console.log('[useShoppingSync] Realtime conectado.');
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            console.warn('[useShoppingSync] Realtime desconectado:', status);
+            console.log('[useShoppingSync] ✅ Realtime conectado:', channelId);
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('[useShoppingSync] ❌ Realtime erro:', err);
+          } else if (status === 'TIMED_OUT') {
+            console.warn('[useShoppingSync] ⏱ Realtime timeout — reconectando...');
           }
         });
 
@@ -162,15 +192,14 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
     return () => {
       cancelled = true;
-      // Desinscrever canal ao desmontar / trocar userId
       if (channelRef.current && supabase) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [userId]);
+  }, [userId]); // re-executa apenas se userId mudar
 
-  // ── Persistir cache toda vez que items mudar (modo offline) ───────────────
+  // ── Cache offline: persiste a cada mudança de items ───────────────────────
   useEffect(() => {
     if (userId && !isLoading) {
       writeCache(userId, items);
@@ -178,94 +207,91 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
   }, [items, userId, isLoading]);
 
   // ── addItem ───────────────────────────────────────────────────────────────
-  const addItem = useCallback(
-    async (item: Item) => {
-      // Optimistic update
-      setItems((prev) => {
-        const existing = prev.find((i) => i.id === item.id);
-        if (existing) {
-          return prev.map((i) =>
-            i.id === item.id
-              ? { ...item, frequencia: i.frequencia + 1, ultima_compra: new Date().toISOString() }
-              : i,
-          );
-        }
-        return [...prev, { ...item, ultima_compra: new Date().toISOString() }];
-      });
+  const addItem = useCallback(async (item: Item) => {
+    // Optimistic update imediato
+    const now = new Date().toISOString();
+    setItems((prev) => {
+      const existing = prev.find((i) => i.id === item.id);
+      if (existing) {
+        return prev.map((i) =>
+          i.id === item.id
+            ? { ...item, frequencia: i.frequencia + 1, ultima_compra: now }
+            : i,
+        );
+      }
+      return [...prev, { ...item, ultima_compra: now }];
+    });
 
-      // Persistir no Supabase (sem aguardar — fire and forget com log de erro)
-      await upsertItem(
-        { ...item, ultima_compra: new Date().toISOString() },
-        userId,
-        coupleIdRef.current,
-      );
-    },
-    [userId],
-  );
+    // Gravar no Supabase — o Realtime vai propagar para o outro dispositivo
+    const { error } = await upsertItem(
+      { ...item, ultima_compra: now },
+      userId,
+      coupleIdRef.current,
+    );
+    if (error) {
+      console.error('[useShoppingSync] addItem falhou:', error);
+    }
+  }, [userId]);
 
   // ── updateItem ────────────────────────────────────────────────────────────
-  const updateItem = useCallback(
-    async (item: Item) => {
-      // Optimistic update
-      setItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
+  const updateItem = useCallback(async (item: Item) => {
+    setItems((prev) => prev.map((i) => i.id === item.id ? item : i));
 
-      await upsertItem(item, userId, coupleIdRef.current);
-    },
-    [userId],
-  );
+    const { error } = await upsertItem(item, userId, coupleIdRef.current);
+    if (error) {
+      console.error('[useShoppingSync] updateItem falhou:', error);
+    }
+  }, [userId]);
 
   // ── deleteItem ────────────────────────────────────────────────────────────
-  const deleteItem = useCallback(
-    async (id: string) => {
-      // Optimistic update
-      setItems((prev) => prev.filter((i) => i.id !== id));
+  const deleteItem = useCallback(async (id: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
 
-      await dbDeleteItem(id);
-    },
-    [],
-  );
+    const { error } = await dbDeleteItem(id);
+    if (error) {
+      console.error('[useShoppingSync] deleteItem falhou:', error);
+    }
+  }, []);
 
   // ── toggleComprado ────────────────────────────────────────────────────────
-  const toggleComprado = useCallback(
-    async (id: string) => {
-      let newValue = false;
+  const toggleComprado = useCallback(async (id: string) => {
+    let newValue = false;
 
-      // Optimistic update
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.id === id) {
-            newValue = !i.comprado;
-            return { ...i, comprado: newValue };
-          }
-          return i;
-        }),
-      );
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id === id) {
+          newValue = !i.comprado;
+          return { ...i, comprado: newValue };
+        }
+        return i;
+      }),
+    );
 
-      await patchItem(id, { comprado: newValue });
-    },
-    [],
-  );
+    const { error } = await patchItem(id, { comprado: newValue });
+    if (error) {
+      console.error('[useShoppingSync] toggleComprado falhou:', error);
+    }
+  }, []);
 
   // ── toggleSelecionado ─────────────────────────────────────────────────────
-  const toggleSelecionado = useCallback(
-    async (id: string) => {
-      let newValue = false;
+  const toggleSelecionado = useCallback(async (id: string) => {
+    let newValue = false;
 
-      // Optimistic update
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.id === id) {
-            newValue = !i.selecionado;
-            return { ...i, selecionado: newValue };
-          }
-          return i;
-        }),
-      );
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id === id) {
+          newValue = !i.selecionado;
+          return { ...i, selecionado: newValue };
+        }
+        return i;
+      }),
+    );
 
-      await patchItem(id, { selecionado: newValue });
-    },
-    [],
-  );
+    const { error } = await patchItem(id, { selecionado: newValue });
+    if (error) {
+      console.error('[useShoppingSync] toggleSelecionado falhou:', error);
+    }
+  }, []);
 
   return {
     items,
