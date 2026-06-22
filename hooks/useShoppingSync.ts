@@ -1,17 +1,21 @@
 /**
- * useShoppingSync
+ * useShoppingSync — v3
  *
- * Hook central de sincronização da lista de compras.
+ * Estratégia de sincronização revisada para funcionar com RLS + couple_id:
  *
- * Suporte a dois cenários:
- * 1. Mesma conta em dois dispositivos (userId igual)
- * 2. Contas separadas vinculadas por couple_id
+ * PROBLEMA: postgres_changes com RLS filtra eventos pelo user_id da LINHA,
+ * não pelas policies de SELECT. Isso significa que usuário B nunca recebe
+ * eventos de linhas criadas por usuário A, mesmo com policy couple_id.
  *
- * Estratégia:
- * - Supabase é a fonte de verdade quando disponível.
- * - localStorage é cache offline.
- * - Realtime: escuta INSERT/UPDATE/DELETE em shopping_items
- *   filtrando por user_id OU couple_id.
+ * SOLUÇÃO: ao receber qualquer evento Realtime (mesmo sem payload útil),
+ * fazemos um refetch completo da lista. Isso garante que ambos os usuários
+ * sempre vejam o estado atual do banco, independente de quem criou o item.
+ *
+ * Fluxo:
+ * 1. Usuário A adiciona item → optimistic update local + upsert no Supabase
+ * 2. Supabase dispara evento Realtime
+ * 3. Usuário B recebe evento → faz refetch → vê o item de A
+ * 4. Usuário A recebe o próprio evento → refetch idempotente (já tem o item)
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -22,8 +26,6 @@ import {
   upsertItem,
   patchItem,
   deleteItem as dbDeleteItem,
-  dbToItem,
-  DbShoppingItem,
 } from '../services/shoppingService';
 
 // ── Cache offline ─────────────────────────────────────────────────────────────
@@ -47,7 +49,7 @@ function writeCache(userId: string, items: Item[]) {
   } catch { /* QuotaExceededError — ignorar */ }
 }
 
-// ── Buscar couple_id diretamente (sem cache de módulo) ────────────────────────
+// ── Buscar couple_id ──────────────────────────────────────────────────────────
 
 async function fetchCoupleId(userId: string): Promise<string | null> {
   if (!supabase) return null;
@@ -80,10 +82,28 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
 
-  // couple_id em ref para não causar re-render
   const coupleIdRef = useRef<string | null>(null);
-  // Ref do canal Realtime para cleanup
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null);
+  // Debounce ref para evitar refetches excessivos em cascata
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFetchingRef = useRef(false);
+
+  // ── Refetch com debounce ────────────────────────────────────────────────────
+  const scheduleRefetch = useCallback((delayMs = 300) => {
+    if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    refetchTimerRef.current = setTimeout(async () => {
+      if (!supabase || isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      try {
+        const remoteItems = await fetchItems(userId);
+        setItems(remoteItems);
+        writeCache(userId, remoteItems);
+        console.log('[useShoppingSync] 🔄 Refetch concluído:', remoteItems.length, 'itens');
+      } finally {
+        isFetchingRef.current = false;
+      }
+    }, delayMs);
+  }, [userId]);
 
   // ── Carga inicial + Realtime ────────────────────────────────────────────────
   useEffect(() => {
@@ -100,16 +120,18 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
         return;
       }
 
-      // 1. Buscar couple_id (sem cache de módulo — sempre fresco)
+      // 1. couple_id
       coupleIdRef.current = await fetchCoupleId(userId);
+      console.log('[useShoppingSync] couple_id:', coupleIdRef.current);
 
-      // 2. Carregar todos os itens visíveis (RLS retorna próprios + casal)
+      // 2. Carga inicial
       const remoteItems = await fetchItems(userId);
       if (!cancelled) {
         setItems(remoteItems);
         writeCache(userId, remoteItems);
         setIsSynced(true);
         setIsLoading(false);
+        console.log('[useShoppingSync] Carga inicial:', remoteItems.length, 'itens');
       }
 
       // 3. Cleanup canal anterior
@@ -118,70 +140,35 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
         channelRef.current = null;
       }
 
-      // 4. Montar canal Realtime
-      //
-      // IMPORTANTE: usamos um nome de canal único por instância do browser
-      // para evitar conflito quando o mesmo userId abre em dois dispositivos.
-      // O UUID aleatório no nome garante que cada aba/dispositivo tenha
-      // seu próprio canal independente.
-      //
-      // Escutamos TODOS os eventos da tabela shopping_items sem filtro
-      // no canal — o RLS do Supabase já garante que só chegam eventos
-      // dos itens que o usuário tem permissão de ver (próprios + casal).
-      const channelId = `shopping_sync_${userId}_${Math.random().toString(36).slice(2, 8)}`;
+      // 4. Canal Realtime
+      // Usamos nome único por instância para evitar conflito entre abas/dispositivos.
+      // Ao receber QUALQUER evento na tabela, fazemos refetch completo.
+      // Isso contorna a limitação do RLS no postgres_changes que só entrega
+      // eventos ao dono da linha — com refetch, o parceiro vê tudo via SELECT.
+      const channelId = `shopping_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
       const channel = supabase
         .channel(channelId)
-        .on<DbShoppingItem>(
+        .on(
           'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'shopping_items',
-          },
+          { event: '*', schema: 'public', table: 'shopping_items' },
           (payload) => {
             if (cancelled) return;
-
-            const { eventType } = payload;
-
-            setItems((prev) => {
-              if (eventType === 'INSERT') {
-                const incoming = dbToItem(payload.new as DbShoppingItem);
-                // Evita duplicata — optimistic update já adicionou localmente
-                if (prev.some((i) => i.id === incoming.id)) {
-                  // Atualiza mesmo assim para garantir que o estado remoto
-                  // (com id real do banco) sobrescreva o estado local
-                  return prev.map((i) => i.id === incoming.id ? incoming : i);
-                }
-                const next = [...prev, incoming];
-                writeCache(userId, next);
-                return next;
-
-              } else if (eventType === 'UPDATE') {
-                const updated = dbToItem(payload.new as DbShoppingItem);
-                const next = prev.map((i) => i.id === updated.id ? updated : i);
-                writeCache(userId, next);
-                return next;
-
-              } else if (eventType === 'DELETE') {
-                const deletedId = (payload.old as { id: string }).id;
-                const next = prev.filter((i) => i.id !== deletedId);
-                writeCache(userId, next);
-                return next;
-              }
-
-              return prev;
-            });
+            console.log('[useShoppingSync] 📡 Evento Realtime recebido:', payload.eventType);
+            // Refetch com pequeno delay para garantir que o banco já commitou
+            scheduleRefetch(200);
           },
         )
         .subscribe((status, err) => {
           if (cancelled) return;
           if (status === 'SUBSCRIBED') {
-            console.log('[useShoppingSync] ✅ Realtime conectado:', channelId);
+            console.log('[useShoppingSync] ✅ Realtime SUBSCRIBED:', channelId);
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('[useShoppingSync] ❌ Realtime erro:', err);
+            console.error('[useShoppingSync] ❌ CHANNEL_ERROR:', err);
           } else if (status === 'TIMED_OUT') {
-            console.warn('[useShoppingSync] ⏱ Realtime timeout — reconectando...');
+            console.warn('[useShoppingSync] ⏱ TIMED_OUT — reconectando...');
+          } else {
+            console.log('[useShoppingSync] status:', status);
           }
         });
 
@@ -192,14 +179,15 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
     return () => {
       cancelled = true;
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
       if (channelRef.current && supabase) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [userId]); // re-executa apenas se userId mudar
+  }, [userId, scheduleRefetch]);
 
-  // ── Cache offline: persiste a cada mudança de items ───────────────────────
+  // ── Persiste cache offline ────────────────────────────────────────────────
   useEffect(() => {
     if (userId && !isLoading) {
       writeCache(userId, items);
@@ -208,8 +196,9 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
   // ── addItem ───────────────────────────────────────────────────────────────
   const addItem = useCallback(async (item: Item) => {
-    // Optimistic update imediato
     const now = new Date().toISOString();
+
+    // Optimistic update
     setItems((prev) => {
       const existing = prev.find((i) => i.id === item.id);
       if (existing) {
@@ -222,16 +211,17 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
       return [...prev, { ...item, ultima_compra: now }];
     });
 
-    // Gravar no Supabase — o Realtime vai propagar para o outro dispositivo
     const { error } = await upsertItem(
       { ...item, ultima_compra: now },
       userId,
       coupleIdRef.current,
     );
     if (error) {
-      console.error('[useShoppingSync] addItem falhou:', error);
+      console.error('[useShoppingSync] addItem error:', error);
+      // Reverter optimistic update em caso de erro
+      scheduleRefetch(0);
     }
-  }, [userId]);
+  }, [userId, scheduleRefetch]);
 
   // ── updateItem ────────────────────────────────────────────────────────────
   const updateItem = useCallback(async (item: Item) => {
@@ -239,9 +229,10 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
     const { error } = await upsertItem(item, userId, coupleIdRef.current);
     if (error) {
-      console.error('[useShoppingSync] updateItem falhou:', error);
+      console.error('[useShoppingSync] updateItem error:', error);
+      scheduleRefetch(0);
     }
-  }, [userId]);
+  }, [userId, scheduleRefetch]);
 
   // ── deleteItem ────────────────────────────────────────────────────────────
   const deleteItem = useCallback(async (id: string) => {
@@ -249,49 +240,42 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
     const { error } = await dbDeleteItem(id);
     if (error) {
-      console.error('[useShoppingSync] deleteItem falhou:', error);
+      console.error('[useShoppingSync] deleteItem error:', error);
+      scheduleRefetch(0);
     }
-  }, []);
+  }, [scheduleRefetch]);
 
   // ── toggleComprado ────────────────────────────────────────────────────────
   const toggleComprado = useCallback(async (id: string) => {
     let newValue = false;
-
     setItems((prev) =>
       prev.map((i) => {
-        if (i.id === id) {
-          newValue = !i.comprado;
-          return { ...i, comprado: newValue };
-        }
+        if (i.id === id) { newValue = !i.comprado; return { ...i, comprado: newValue }; }
         return i;
       }),
     );
-
     const { error } = await patchItem(id, { comprado: newValue });
     if (error) {
-      console.error('[useShoppingSync] toggleComprado falhou:', error);
+      console.error('[useShoppingSync] toggleComprado error:', error);
+      scheduleRefetch(0);
     }
-  }, []);
+  }, [scheduleRefetch]);
 
   // ── toggleSelecionado ─────────────────────────────────────────────────────
   const toggleSelecionado = useCallback(async (id: string) => {
     let newValue = false;
-
     setItems((prev) =>
       prev.map((i) => {
-        if (i.id === id) {
-          newValue = !i.selecionado;
-          return { ...i, selecionado: newValue };
-        }
+        if (i.id === id) { newValue = !i.selecionado; return { ...i, selecionado: newValue }; }
         return i;
       }),
     );
-
     const { error } = await patchItem(id, { selecionado: newValue });
     if (error) {
-      console.error('[useShoppingSync] toggleSelecionado falhou:', error);
+      console.error('[useShoppingSync] toggleSelecionado error:', error);
+      scheduleRefetch(0);
     }
-  }, []);
+  }, [scheduleRefetch]);
 
   return {
     items,
