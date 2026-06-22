@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Item, Category, ArchivedList, AppView, CustomCategory, PurchaseRecord, PurchaseHistory } from './types';
 import { useUserStorage, migrateLeacyDataToUser } from './hooks/useUserStorage';
+import { useShoppingSync } from './hooks/useShoppingSync';
 import { useAuth, useSession } from './contexts/AuthContext';
 import { CATEGORIES } from './constants.tsx';
 import { CATEGORY_ITEMS } from './categoryItems';
@@ -19,6 +20,7 @@ import { ConsumptionDashboard } from './components/ConsumptionDashboard';
 import { useConsumptionStats } from './hooks/useConsumptionStats';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { VoiceCommandButton } from './components/VoiceCommandButton';
+import { CoupleLink } from './components/CoupleLink';
 
 const App: React.FC = () => {
     const { user, isLoading, isAuthenticated } = useSession();
@@ -67,7 +69,20 @@ interface AppMainProps {
 }
 
 const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
-    const [items, setItems] = useUserStorage<Item[]>(userId, 'shoppingList', []);
+    // ── Lista de compras: Supabase + Realtime (com fallback localStorage) ──
+    const {
+        items,
+        isLoading: isShoppingLoading,
+        isSynced,
+        addItem: syncAddItem,
+        updateItem: syncUpdateItem,
+        deleteItem: syncDeleteItem,
+        toggleComprado: syncToggleComprado,
+        toggleSelecionado: syncToggleSelecionado,
+        setItems,
+    } = useShoppingSync(userId);
+
+    // ── Outros dados: permanecem em localStorage (histórico, categorias) ──
     const [archivedLists, setArchivedLists] = useUserStorage<ArchivedList[]>(userId, 'archivedLists', []);
     const [purchaseHistory, setPurchaseHistory] = useUserStorage<PurchaseHistory[]>(userId, 'purchaseHistory', []);
     const [customCategories, setCustomCategories] = useUserStorage<CustomCategory[]>(userId, 'customCategories', []);
@@ -84,6 +99,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
     
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isCreateCategoryModalOpen, setIsCreateCategoryModalOpen] = useState(false);
+    const [isCoupleLinkOpen, setIsCoupleLinkOpen] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [newCategoryIcon, setNewCategoryIcon] = useState('🏷️');
     const [showMenuHint, setShowMenuHint] = useState(() => {
@@ -92,33 +108,21 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
     });
     
     const addItem = (item: Item) => {
-        setItems(prevItems => {
-            const existingItem = prevItems.find(i => i.id === item.id);
-            if (existingItem) {
-                return prevItems.map(i => i.id === item.id ? { ...item, frequencia: i.frequencia + 1, ultima_compra: new Date().toISOString() } : i);
-            }
-            return [...prevItems, { ...item, ultima_compra: new Date().toISOString() }];
-        });
+        syncAddItem(item);
     };
     
     const deleteItem = (id: string) => {
-        setItems(prev => prev.filter(item => item.id !== id));
+        syncDeleteItem(id);
     };
 
     const toggleItem = (id: string) => {
-        // Forma funcional evita closure stale — garante que o estado base
-        // seja sempre o mais recente, independente de re-renders intermediários
-        setItems(prev => prev.map(item =>
-            item.id === id ? { ...item, comprado: !item.comprado } : item
-        ));
+        syncToggleComprado(id);
     };
 
     // Alterna se o item está selecionado para a lista de compras (CategoryModal)
     // Não altera "comprado" — esse status só muda no Modo Compras
     const toggleSelecionado = (id: string) => {
-        setItems(prev => prev.map(item =>
-            item.id === id ? { ...item, selecionado: !item.selecionado } : item
-        ));
+        syncToggleSelecionado(id);
     };
 
     const handleOpenCategory = (category: Category) => {
@@ -205,21 +209,26 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
             }
         }
 
-        // 4. Remover comprados e atualizar intervalos — uma única chamada setItems
-        setItems(prev => {
-            const compradosIds = new Set(purchasedItems.map(p => p.id));
-            return prev
-                .map(item => {
-                    const novoDias = diasMap.get(item.id);
-                    return novoDias !== undefined ? { ...item, dias_entre_compras: novoDias } : item;
-                })
-                .filter(item => !compradosIds.has(item.id));
-        });
+        // 4. Remover comprados e atualizar intervalos — optimistic update + sync Supabase
+        const compradosIds = new Set(purchasedItems.map(p => p.id));
+
+        // Atualizar dias_entre_compras dos não-comprados via Supabase
+        for (const [id, dias] of diasMap.entries()) {
+            const item = items.find(i => i.id === id);
+            if (item) {
+                syncUpdateItem({ ...item, dias_entre_compras: dias });
+            }
+        }
+
+        // Excluir comprados do Supabase (um a um para RLS funcionar corretamente)
+        for (const id of compradosIds) {
+            syncDeleteItem(id);
+        }
     };
     
     const handleRepeatList = (listItems: Item[]) => {
         const itemsToRepeat = listItems.map(item => ({...item, id: new Date().getTime() + item.nome, comprado: false }));
-        setItems(prev => [...prev, ...itemsToRepeat]);
+        itemsToRepeat.forEach(item => syncAddItem(item));
         setView(AppView.LISTA);
         alert('Lista repetida e adicionada à sua lista atual!');
     };
@@ -350,7 +359,16 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                             <span>←</span>
                             <span>Voltar para Minhas Listas</span>
                         </button>
-                        <ListSharing items={items} />
+                        <ListSharing
+                            items={items}
+                            onLoadSharedList={(loadedItems) => {
+                                loadedItems.forEach(item => syncAddItem({
+                                    ...item,
+                                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                                    comprado: false,
+                                }));
+                            }}
+                        />
                     </div>
                 );
             case AppView.LISTA:
@@ -564,7 +582,27 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                         
                         {/* Título do App + Nome do Casal */}
                         <div className="header-title">
-                            <h1>Lista de Compras</h1>
+                            <div className="flex items-center gap-2">
+                                <h1>Lista de Compras</h1>
+                                {/* Indicador de sincronização Realtime */}
+                                {isSynced ? (
+                                    <span
+                                        title="Sincronizado com Supabase — alterações aparecem para todos em tempo real"
+                                        className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30"
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
+                                        sync
+                                    </span>
+                                ) : (
+                                    <span
+                                        title="Modo offline — dados salvos localmente"
+                                        className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                                        offline
+                                    </span>
+                                )}
+                            </div>
                             {nomeCasal && (
                                 <p className="text-xs text-mint-dark dark:text-mint opacity-90 font-medium truncate max-w-[160px]">
                                     👫 {nomeCasal}
@@ -591,9 +629,10 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                                 items,
                                 customCategories,
                                 addItem,
-                                updateItem: (id, changes) => setItems(prev =>
-                                    prev.map(i => i.id === id ? { ...i, ...changes } : i)
-                                ),
+                                updateItem: (id, changes) => {
+                                    const item = items.find(i => i.id === id);
+                                    if (item) syncUpdateItem({ ...item, ...changes });
+                                },
                                 deleteItem,
                                 toggleItem,
                                 addCustomCategory: (cat) => setCustomCategories(prev => [...prev, cat]),
@@ -716,6 +755,17 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                                 <div className="space-y-2">
                                     <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Configurações</h3>
                                     <DarkModeToggle />
+                                    {/* Vínculo de casal */}
+                                    <button
+                                        onClick={() => { setIsCoupleLinkOpen(true); setIsMobileMenuOpen(false); }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                                    >
+                                        <span className="text-2xl">💑</span>
+                                        <div className="min-w-0">
+                                            <p className="font-medium text-dark-gray dark:text-white text-sm">Vínculo de Casal</p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Sincronizar lista com parceiro(a)</p>
+                                        </div>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -744,24 +794,23 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                     onToggleItem={toggleSelecionado}
                     onDeleteItem={deleteItem}
                     onEditItem={handleEditItem}
-                    onUpdateItem={(item) => setItems(prev => prev.map(i => i.id === item.id ? item : i))}
+                    onUpdateItem={(item) => syncUpdateItem(item)}
                     onAddItem={handleAddItemFromCategory}
                     onAddNewItem={addItem}
                     autoOpenDeleteCategory={categoryModalAutoDelete}
                     onDeleteAllItems={() => {
-                        setItems(prev => prev.filter(i => i.categoria !== selectedCategory));
+                        // Excluir da lista local + Supabase
+                        const toDelete = (itemsByCategory[selectedCategory] || []);
+                        toDelete.forEach(i => syncDeleteItem(i.id));
                     }}
                     onDeleteCategory={
                         customCategories.some(c => c.name === selectedCategory)
                             ? (mode: 'move' | 'delete') => {
+                                const catItems = itemsByCategory[selectedCategory] || [];
                                 if (mode === 'move') {
-                                    setItems(prev => prev.map(i =>
-                                        i.categoria === selectedCategory
-                                            ? { ...i, categoria: Category.OUTROS }
-                                            : i
-                                    ));
+                                    catItems.forEach(i => syncUpdateItem({ ...i, categoria: Category.OUTROS }));
                                 } else {
-                                    setItems(prev => prev.filter(i => i.categoria !== selectedCategory));
+                                    catItems.forEach(i => syncDeleteItem(i.id));
                                 }
                                 setCustomCategories(prev =>
                                     prev.filter(c => c.name !== selectedCategory)
@@ -906,6 +955,14 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
             )}
 
             {/* ── Comandos de Voz (movido para o header) ───────────────── */}
+
+            {/* Modal Vínculo de Casal */}
+            {isCoupleLinkOpen && (
+                <CoupleLink
+                    userId={userId}
+                    onClose={() => setIsCoupleLinkOpen(false)}
+                />
+            )}
         </div>
     );
 }
