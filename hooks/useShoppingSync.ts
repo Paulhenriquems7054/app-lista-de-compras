@@ -1,21 +1,19 @@
 /**
- * useShoppingSync — v3
+ * useShoppingSync — v4
  *
- * Estratégia de sincronização revisada para funcionar com RLS + couple_id:
+ * Correção do bug "marca e desmarca":
  *
- * PROBLEMA: postgres_changes com RLS filtra eventos pelo user_id da LINHA,
- * não pelas policies de SELECT. Isso significa que usuário B nunca recebe
- * eventos de linhas criadas por usuário A, mesmo com policy couple_id.
+ * O problema era que o próprio dispositivo recebia o evento Realtime
+ * da sua própria mutação e disparava um refetch que sobrescrevia o
+ * optimistic update antes do banco confirmar o novo valor.
  *
- * SOLUÇÃO: ao receber qualquer evento Realtime (mesmo sem payload útil),
- * fazemos um refetch completo da lista. Isso garante que ambos os usuários
- * sempre vejam o estado atual do banco, independente de quem criou o item.
- *
- * Fluxo:
- * 1. Usuário A adiciona item → optimistic update local + upsert no Supabase
- * 2. Supabase dispara evento Realtime
- * 3. Usuário B recebe evento → faz refetch → vê o item de A
- * 4. Usuário A recebe o próprio evento → refetch idempotente (já tem o item)
+ * Solução:
+ * - Após qualquer mutação local, registra o id do item em um Set de
+ *   "operações pendentes" com timestamp.
+ * - Ao receber evento Realtime, verifica se o item estava em operação
+ *   local recente (< 2s). Se sim, ignora o evento para esse item.
+ * - Refetch só acontece para eventos de itens que o dispositivo
+ *   NÃO modificou recentemente (eventos do parceiro).
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -38,18 +36,16 @@ function readCache(userId: string): Item[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 function writeCache(userId: string, items: Item[]) {
   try {
     localStorage.setItem(cacheKey(userId), JSON.stringify(items));
-  } catch { /* QuotaExceededError — ignorar */ }
+  } catch { /* ignorar */ }
 }
 
-// ── Buscar couple_id ──────────────────────────────────────────────────────────
+// ── couple_id ─────────────────────────────────────────────────────────────────
 
 async function fetchCoupleId(userId: string): Promise<string | null> {
   if (!supabase) return null;
@@ -77,6 +73,10 @@ export interface UseShoppingSyncReturn {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
+// Janela de supressão: eventos Realtime dentro deste período após uma mutação
+// local são ignorados (são eco do próprio dispositivo)
+const SUPPRESS_WINDOW_MS = 3000;
+
 export function useShoppingSync(userId: string): UseShoppingSyncReturn {
   const [items, setItems] = useState<Item[]>(() => readCache(userId));
   const [isLoading, setIsLoading] = useState(true);
@@ -84,41 +84,59 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
   const coupleIdRef = useRef<string | null>(null);
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null);
-  // Debounce ref para evitar refetches excessivos em cascata
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFetchingRef = useRef(false);
 
-  // ── Refetch com debounce ────────────────────────────────────────────────────
-  const scheduleRefetch = useCallback((delayMs = 300) => {
-    if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
-    refetchTimerRef.current = setTimeout(async () => {
-      if (!supabase || isFetchingRef.current) return;
-      isFetchingRef.current = true;
-      try {
-        const remoteItems = await fetchItems(userId);
-        setItems(remoteItems);
-        writeCache(userId, remoteItems);
-        console.log('[useShoppingSync] 🔄 Refetch concluído:', remoteItems.length, 'itens');
-      } finally {
-        isFetchingRef.current = false;
+  // Set de ids de itens modificados localmente recentemente
+  // Map<itemId, timestamp da última mutação>
+  const localMutationsRef = useRef<Map<string, number>>(new Map());
+
+  // ── Registrar mutação local ───────────────────────────────────────────────
+  const markLocalMutation = useCallback((itemId: string) => {
+    localMutationsRef.current.set(itemId, Date.now());
+    // Limpar entradas antigas automaticamente
+    setTimeout(() => {
+      const entry = localMutationsRef.current.get(itemId);
+      if (entry && Date.now() - entry >= SUPPRESS_WINDOW_MS) {
+        localMutationsRef.current.delete(itemId);
       }
-    }, delayMs);
+    }, SUPPRESS_WINDOW_MS + 100);
+  }, []);
+
+  // ── Verificar se evento é eco local ──────────────────────────────────────
+  const isLocalEcho = useCallback((itemId: string): boolean => {
+    const ts = localMutationsRef.current.get(itemId);
+    if (!ts) return false;
+    return Date.now() - ts < SUPPRESS_WINDOW_MS;
+  }, []);
+
+  // ── Refetch completo ──────────────────────────────────────────────────────
+  const doRefetch = useCallback(async () => {
+    if (!supabase || isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    try {
+      const remoteItems = await fetchItems(userId);
+      setItems(remoteItems);
+      writeCache(userId, remoteItems);
+      console.log('[useShoppingSync] 🔄 Refetch:', remoteItems.length, 'itens');
+    } finally {
+      isFetchingRef.current = false;
+    }
   }, [userId]);
+
+  const scheduleRefetch = useCallback((delayMs = 500) => {
+    if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    refetchTimerRef.current = setTimeout(doRefetch, delayMs);
+  }, [doRefetch]);
 
   // ── Carga inicial + Realtime ────────────────────────────────────────────────
   useEffect(() => {
-    if (!userId) {
-      setIsLoading(false);
-      return;
-    }
+    if (!userId) { setIsLoading(false); return; }
 
     let cancelled = false;
 
     const init = async () => {
-      if (!supabase) {
-        setIsLoading(false);
-        return;
-      }
+      if (!supabase) { setIsLoading(false); return; }
 
       // 1. couple_id
       coupleIdRef.current = await fetchCoupleId(userId);
@@ -141,10 +159,6 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
       }
 
       // 4. Canal Realtime
-      // Usamos nome único por instância para evitar conflito entre abas/dispositivos.
-      // Ao receber QUALQUER evento na tabela, fazemos refetch completo.
-      // Isso contorna a limitação do RLS no postgres_changes que só entrega
-      // eventos ao dono da linha — com refetch, o parceiro vê tudo via SELECT.
       const channelId = `shopping_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
       const channel = supabase
@@ -154,21 +168,33 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
           { event: '*', schema: 'public', table: 'shopping_items' },
           (payload) => {
             if (cancelled) return;
-            console.log('[useShoppingSync] 📡 Evento Realtime recebido:', payload.eventType);
-            // Refetch com pequeno delay para garantir que o banco já commitou
-            scheduleRefetch(200);
+
+            // Extrair o id do item afetado
+            const affectedId =
+              (payload.new as { id?: string })?.id ||
+              (payload.old as { id?: string })?.id;
+
+            console.log('[useShoppingSync] 📡 Evento:', payload.eventType, '| id:', affectedId);
+
+            // Se é eco de mutação local, ignorar completamente
+            if (affectedId && isLocalEcho(affectedId)) {
+              console.log('[useShoppingSync] 🔇 Eco local ignorado:', affectedId);
+              return;
+            }
+
+            // Evento do parceiro — fazer refetch para ver as mudanças dele
+            console.log('[useShoppingSync] 👫 Evento do parceiro — refetch');
+            scheduleRefetch(300);
           },
         )
         .subscribe((status, err) => {
           if (cancelled) return;
           if (status === 'SUBSCRIBED') {
-            console.log('[useShoppingSync] ✅ Realtime SUBSCRIBED:', channelId);
+            console.log('[useShoppingSync] ✅ SUBSCRIBED:', channelId);
           } else if (status === 'CHANNEL_ERROR') {
             console.error('[useShoppingSync] ❌ CHANNEL_ERROR:', err);
           } else if (status === 'TIMED_OUT') {
-            console.warn('[useShoppingSync] ⏱ TIMED_OUT — reconectando...');
-          } else {
-            console.log('[useShoppingSync] status:', status);
+            console.warn('[useShoppingSync] ⏱ TIMED_OUT');
           }
         });
 
@@ -185,20 +211,20 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
         channelRef.current = null;
       }
     };
-  }, [userId, scheduleRefetch]);
+  }, [userId, scheduleRefetch, isLocalEcho]);
 
-  // ── Persiste cache offline ────────────────────────────────────────────────
+  // ── Cache offline ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (userId && !isLoading) {
-      writeCache(userId, items);
-    }
+    if (userId && !isLoading) writeCache(userId, items);
   }, [items, userId, isLoading]);
 
   // ── addItem ───────────────────────────────────────────────────────────────
   const addItem = useCallback(async (item: Item) => {
     const now = new Date().toISOString();
 
-    // Optimistic update
+    // Registrar mutação local ANTES do optimistic update
+    markLocalMutation(item.id);
+
     setItems((prev) => {
       const existing = prev.find((i) => i.id === item.id);
       if (existing) {
@@ -218,35 +244,40 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
     );
     if (error) {
       console.error('[useShoppingSync] addItem error:', error);
-      // Reverter optimistic update em caso de erro
+      localMutationsRef.current.delete(item.id);
       scheduleRefetch(0);
     }
-  }, [userId, scheduleRefetch]);
+  }, [userId, markLocalMutation, scheduleRefetch]);
 
   // ── updateItem ────────────────────────────────────────────────────────────
   const updateItem = useCallback(async (item: Item) => {
+    markLocalMutation(item.id);
     setItems((prev) => prev.map((i) => i.id === item.id ? item : i));
 
     const { error } = await upsertItem(item, userId, coupleIdRef.current);
     if (error) {
       console.error('[useShoppingSync] updateItem error:', error);
+      localMutationsRef.current.delete(item.id);
       scheduleRefetch(0);
     }
-  }, [userId, scheduleRefetch]);
+  }, [userId, markLocalMutation, scheduleRefetch]);
 
   // ── deleteItem ────────────────────────────────────────────────────────────
   const deleteItem = useCallback(async (id: string) => {
+    markLocalMutation(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
 
     const { error } = await dbDeleteItem(id);
     if (error) {
       console.error('[useShoppingSync] deleteItem error:', error);
+      localMutationsRef.current.delete(id);
       scheduleRefetch(0);
     }
-  }, [scheduleRefetch]);
+  }, [markLocalMutation, scheduleRefetch]);
 
   // ── toggleComprado ────────────────────────────────────────────────────────
   const toggleComprado = useCallback(async (id: string) => {
+    markLocalMutation(id);
     let newValue = false;
     setItems((prev) =>
       prev.map((i) => {
@@ -257,12 +288,14 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
     const { error } = await patchItem(id, { comprado: newValue });
     if (error) {
       console.error('[useShoppingSync] toggleComprado error:', error);
+      localMutationsRef.current.delete(id);
       scheduleRefetch(0);
     }
-  }, [scheduleRefetch]);
+  }, [markLocalMutation, scheduleRefetch]);
 
   // ── toggleSelecionado ─────────────────────────────────────────────────────
   const toggleSelecionado = useCallback(async (id: string) => {
+    markLocalMutation(id);
     let newValue = false;
     setItems((prev) =>
       prev.map((i) => {
@@ -273,9 +306,10 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
     const { error } = await patchItem(id, { selecionado: newValue });
     if (error) {
       console.error('[useShoppingSync] toggleSelecionado error:', error);
+      localMutationsRef.current.delete(id);
       scheduleRefetch(0);
     }
-  }, [scheduleRefetch]);
+  }, [markLocalMutation, scheduleRefetch]);
 
   return {
     items,
