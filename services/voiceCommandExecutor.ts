@@ -9,6 +9,7 @@
 
 import { ParsedCommand } from './voiceCommandParser';
 import { Item, Category, CustomCategory } from '../types';
+import { generateId } from '../utils/generateId';
 
 // Re-exportar VoiceCommand como alias para compatibilidade com VoiceCommandButton
 export type { ParsedCommand as VoiceCommand };
@@ -123,7 +124,7 @@ export function executeVoiceCommand(
       }
 
       const newItem: Item = {
-        id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id:            generateId(),
         nome:          cmd.product,
         quantidade:    fmtQty(cmd.quantity, cmd.unit),
         unidade:       cmd.unit ?? 'un',
@@ -179,7 +180,7 @@ export function executeVoiceCommand(
 
       // Item não existe → criar e já marcar como selecionado
       const newItem: Item = {
-        id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id:            generateId(),
         nome:          cmd.product,
         quantidade:    quantidadeStr,
         unidade:       cmd.unit ?? 'un',
@@ -254,7 +255,7 @@ export function executeVoiceCommand(
       // Item não existe → criar na categoria correta e já marcar como comprado
       const categoria = cmd.category ?? Category.OUTROS;
       const newItem: Item = {
-        id:            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id:            generateId(),
         nome:          cmd.product,
         quantidade:    fmtQty(cmd.quantity, cmd.unit),
         categoria,
