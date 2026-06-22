@@ -21,6 +21,7 @@ import { useConsumptionStats } from './hooks/useConsumptionStats';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { VoiceCommandButton } from './components/VoiceCommandButton';
 import { CoupleLink } from './components/CoupleLink';
+import { generateId } from './utils/generateId';
 
 const App: React.FC = () => {
     const { user, isLoading, isAuthenticated } = useSession();
@@ -227,7 +228,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
     };
     
     const handleRepeatList = (listItems: Item[]) => {
-        const itemsToRepeat = listItems.map(item => ({...item, id: new Date().getTime() + item.nome, comprado: false }));
+        const itemsToRepeat = listItems.map(item => ({...item, id: generateId(), comprado: false }));
         itemsToRepeat.forEach(item => syncAddItem(item));
         setView(AppView.LISTA);
         alert('Lista repetida e adicionada à sua lista atual!');
@@ -364,7 +365,7 @@ const AppMain: React.FC<AppMainProps> = ({ userId, nomeCasal, onSignOut }) => {
                             onLoadSharedList={(loadedItems) => {
                                 loadedItems.forEach(item => syncAddItem({
                                     ...item,
-                                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                                    id: generateId(),
                                     comprado: false,
                                 }));
                             }}

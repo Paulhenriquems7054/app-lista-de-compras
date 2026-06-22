@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Item, Category, CustomCategory } from '../types';
 import { CATEGORY_NAMES } from '../constants';
 import { searchItems, getItemsByCategory } from '../categoryItems';
+import { generateId } from '../utils/generateId';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -93,7 +94,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onS
     }
     
     const newItem: Item = {
-      id: itemToEdit?.id || new Date().toISOString(),
+      id: itemToEdit?.id || generateId(),
       nome,
       quantidade,
       categoria,

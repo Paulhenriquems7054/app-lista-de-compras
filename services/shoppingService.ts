@@ -113,8 +113,8 @@ export function invalidateCoupleIdCache() {
  * Carrega todos os itens visíveis ao usuário (próprios + do casal se vinculado).
  * RLS do Supabase garante o filtro correto.
  */
-export async function fetchItems(userId: string): Promise<Item[]> {
-  if (!supabase) return [];
+export async function fetchItems(userId: string): Promise<Item[] | null> {
+  if (!supabase) return null; // null = offline, não sobrescrever cache
 
   const { data, error } = await supabase
     .from('shopping_items')
@@ -123,9 +123,10 @@ export async function fetchItems(userId: string): Promise<Item[]> {
 
   if (error) {
     console.error('[shoppingService] fetchItems error:', error.message);
-    return [];
+    return null; // null = erro, não sobrescrever cache
   }
 
+  console.log('[shoppingService] fetchItems:', data?.length ?? 0, 'itens do banco');
   return (data as DbShoppingItem[]).map(dbToItem);
 }
 
@@ -139,6 +140,18 @@ export async function upsertItem(
   coupleId: string | null,
 ): Promise<{ error: string | null }> {
   if (!supabase) return { error: null }; // modo offline — sem-op
+
+  // Verificar sessão atual — garantir que userId bate com auth.uid()
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  if (!authUser) {
+    console.error('[shoppingService] upsertItem: sem sessão auth ativa');
+    return { error: 'Sem sessão ativa' };
+  }
+  if (authUser.id !== userId) {
+    console.error('[shoppingService] upsertItem: userId mismatch! param:', userId, '| auth:', authUser.id);
+    // Usar o id real do auth para não violar RLS
+    userId = authUser.id;
+  }
 
   const patch = itemToDbPatch(item, userId, coupleId);
 

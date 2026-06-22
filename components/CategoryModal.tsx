@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Category, Item, FilterType } from '../types';
 import { Icon } from './Icon';
 import { getItemsByCategory } from '../categoryItems';
+import { generateId } from '../utils/generateId';
 
 // Unidades disponíveis para seleção rápida
 const UNITS = ['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct', 'dz'];
@@ -164,7 +165,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
       const vq = virtualQty[item.id] || { qty: '1', unit: 'un' };
       const vp = virtualPrice[item.id];
       const newItem: Item = {
-        id: new Date().toISOString() + item.nome,
+        id: generateId(),
         nome: item.nome,
         quantidade: formatQty(parseFloat(vq.qty) || 1, vq.unit),
         unidade: vq.unit,
@@ -418,7 +419,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                               const vq = virtualQty[item.id] || { qty: '1', unit: 'un' };
                               const vp = virtualPrice[item.id];
                               const newItem: Item = {
-                                id: new Date().toISOString() + item.nome,
+                                id: generateId(),
                                 nome: item.nome,
                                 quantidade: formatQty(parseFloat(vq.qty) || 1, vq.unit),
                                 unidade: vq.unit,

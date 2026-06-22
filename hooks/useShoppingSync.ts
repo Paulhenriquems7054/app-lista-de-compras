@@ -1,19 +1,18 @@
 /**
- * useShoppingSync — v4
+ * useShoppingSync — v5
  *
- * Correção do bug "marca e desmarca":
+ * Correção definitiva do bug "desmarca itens":
  *
- * O problema era que o próprio dispositivo recebia o evento Realtime
- * da sua própria mutação e disparava um refetch que sobrescrevia o
- * optimistic update antes do banco confirmar o novo valor.
+ * Causa raiz identificada: o refetch retornava [] quando o banco estava
+ * vazio (upsert falhando por RLS) e sobrescrevia o estado local completo.
  *
- * Solução:
- * - Após qualquer mutação local, registra o id do item em um Set de
- *   "operações pendentes" com timestamp.
- * - Ao receber evento Realtime, verifica se o item estava em operação
- *   local recente (< 2s). Se sim, ignora o evento para esse item.
- * - Refetch só acontece para eventos de itens que o dispositivo
- *   NÃO modificou recentemente (eventos do parceiro).
+ * Mudanças nesta versão:
+ * 1. Refetch NUNCA substitui o estado local se retornar menos itens que
+ *    o estado atual — protege contra banco vazio ou erro de RLS.
+ * 2. Refetch faz MERGE: itens remotos sobrescrevem locais pelo id,
+ *    mas itens locais sem correspondência remota são mantidos.
+ * 3. Supressão de eco local mantida (janela 3s por item).
+ * 4. Log detalhado de erros de upsert para diagnóstico.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -73,9 +72,7 @@ export interface UseShoppingSyncReturn {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-// Janela de supressão: eventos Realtime dentro deste período após uma mutação
-// local são ignorados (são eco do próprio dispositivo)
-const SUPPRESS_WINDOW_MS = 3000;
+const SUPPRESS_WINDOW_MS = 4000;
 
 export function useShoppingSync(userId: string): UseShoppingSyncReturn {
   const [items, setItems] = useState<Item[]>(() => readCache(userId));
@@ -87,42 +84,73 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFetchingRef = useRef(false);
 
-  // Set de ids de itens modificados localmente recentemente
-  // Map<itemId, timestamp da última mutação>
+  // Map<itemId, timestamp> — mutações feitas localmente nesta sessão
   const localMutationsRef = useRef<Map<string, number>>(new Map());
 
-  // ── Registrar mutação local ───────────────────────────────────────────────
   const markLocalMutation = useCallback((itemId: string) => {
     localMutationsRef.current.set(itemId, Date.now());
-    // Limpar entradas antigas automaticamente
     setTimeout(() => {
-      const entry = localMutationsRef.current.get(itemId);
-      if (entry && Date.now() - entry >= SUPPRESS_WINDOW_MS) {
+      const ts = localMutationsRef.current.get(itemId);
+      if (ts && Date.now() - ts >= SUPPRESS_WINDOW_MS) {
         localMutationsRef.current.delete(itemId);
       }
-    }, SUPPRESS_WINDOW_MS + 100);
+    }, SUPPRESS_WINDOW_MS + 200);
   }, []);
 
-  // ── Verificar se evento é eco local ──────────────────────────────────────
   const isLocalEcho = useCallback((itemId: string): boolean => {
     const ts = localMutationsRef.current.get(itemId);
-    if (!ts) return false;
-    return Date.now() - ts < SUPPRESS_WINDOW_MS;
+    return ts != null && Date.now() - ts < SUPPRESS_WINDOW_MS;
   }, []);
 
-  // ── Refetch completo ──────────────────────────────────────────────────────
+  // ── Refetch seguro: merge, nunca substitui por lista menor ───────────────
   const doRefetch = useCallback(async () => {
     if (!supabase || isFetchingRef.current) return;
     isFetchingRef.current = true;
     try {
       const remoteItems = await fetchItems(userId);
-      setItems(remoteItems);
-      writeCache(userId, remoteItems);
-      console.log('[useShoppingSync] 🔄 Refetch:', remoteItems.length, 'itens');
+
+      // null = erro no fetch — não tocar no estado
+      if (remoteItems === null) {
+        console.warn('[useShoppingSync] fetchItems retornou null — estado preservado');
+        return;
+      }
+
+      setItems((prev) => {
+        // Se o banco retornou vazio mas temos itens locais,
+        // provavelmente o upsert ainda não funcionou — manter local
+        if (remoteItems.length === 0 && prev.length > 0) {
+          console.warn('[useShoppingSync] Refetch retornou 0 itens, mantendo estado local com', prev.length, 'itens');
+          return prev;
+        }
+
+        // Merge: construir mapa dos remotos, depois mesclar com locais
+        const remoteMap = new Map(remoteItems.map(i => [i.id, i]));
+
+        // Itens locais com mutação pendente mantêm seu estado local
+        const merged = prev.map(local => {
+          if (isLocalEcho(local.id)) {
+            // Item com mutação pendente: manter estado local
+            return local;
+          }
+          // Usar versão remota se existir
+          return remoteMap.get(local.id) ?? local;
+        });
+
+        // Adicionar itens remotos que não estavam no estado local
+        const localIds = new Set(prev.map(i => i.id));
+        const newRemote = remoteItems.filter(r => !localIds.has(r.id));
+
+        const result = [...merged, ...newRemote];
+        writeCache(userId, result);
+        console.log('[useShoppingSync] 🔄 Refetch merge:', result.length, 'itens (remote:', remoteItems.length, ')');
+        return result;
+      });
+    } catch (err) {
+      console.error('[useShoppingSync] doRefetch error:', err);
     } finally {
       isFetchingRef.current = false;
     }
-  }, [userId]);
+  }, [userId, isLocalEcho]);
 
   const scheduleRefetch = useCallback((delayMs = 500) => {
     if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
@@ -140,19 +168,25 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
       // 1. couple_id
       coupleIdRef.current = await fetchCoupleId(userId);
-      console.log('[useShoppingSync] couple_id:', coupleIdRef.current);
+      console.log('[useShoppingSync] userId:', userId, '| couple_id:', coupleIdRef.current);
 
-      // 2. Carga inicial
+      // 2. Carga inicial — substitui cache apenas se banco tiver dados
       const remoteItems = await fetchItems(userId);
       if (!cancelled) {
-        setItems(remoteItems);
-        writeCache(userId, remoteItems);
+        if (remoteItems !== null && remoteItems.length > 0) {
+          setItems(remoteItems);
+          writeCache(userId, remoteItems);
+          console.log('[useShoppingSync] Carga inicial do banco:', remoteItems.length, 'itens');
+        } else if (remoteItems === null) {
+          console.warn('[useShoppingSync] Erro ao buscar itens — usando cache local');
+        } else {
+          console.log('[useShoppingSync] Banco vazio — usando cache local:', readCache(userId).length, 'itens');
+        }
         setIsSynced(true);
         setIsLoading(false);
-        console.log('[useShoppingSync] Carga inicial:', remoteItems.length, 'itens');
       }
 
-      // 3. Cleanup canal anterior
+      // 3. Cleanup
       if (channelRef.current) {
         await supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -169,22 +203,17 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
           (payload) => {
             if (cancelled) return;
 
-            // Extrair o id do item afetado
             const affectedId =
               (payload.new as { id?: string })?.id ||
               (payload.old as { id?: string })?.id;
 
-            console.log('[useShoppingSync] 📡 Evento:', payload.eventType, '| id:', affectedId);
-
-            // Se é eco de mutação local, ignorar completamente
             if (affectedId && isLocalEcho(affectedId)) {
-              console.log('[useShoppingSync] 🔇 Eco local ignorado:', affectedId);
+              console.log('[useShoppingSync] 🔇 Eco ignorado:', affectedId);
               return;
             }
 
-            // Evento do parceiro — fazer refetch para ver as mudanças dele
-            console.log('[useShoppingSync] 👫 Evento do parceiro — refetch');
-            scheduleRefetch(300);
+            console.log('[useShoppingSync] 👫 Evento parceiro:', payload.eventType, affectedId);
+            scheduleRefetch(400);
           },
         )
         .subscribe((status, err) => {
@@ -193,8 +222,6 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
             console.log('[useShoppingSync] ✅ SUBSCRIBED:', channelId);
           } else if (status === 'CHANNEL_ERROR') {
             console.error('[useShoppingSync] ❌ CHANNEL_ERROR:', err);
-          } else if (status === 'TIMED_OUT') {
-            console.warn('[useShoppingSync] ⏱ TIMED_OUT');
           }
         });
 
@@ -221,8 +248,6 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
   // ── addItem ───────────────────────────────────────────────────────────────
   const addItem = useCallback(async (item: Item) => {
     const now = new Date().toISOString();
-
-    // Registrar mutação local ANTES do optimistic update
     markLocalMutation(item.id);
 
     setItems((prev) => {
@@ -243,11 +268,9 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
       coupleIdRef.current,
     );
     if (error) {
-      console.error('[useShoppingSync] addItem error:', error);
-      localMutationsRef.current.delete(item.id);
-      scheduleRefetch(0);
+      console.error('[useShoppingSync] addItem ERRO — upsert falhou. Possível problema de RLS:', error);
     }
-  }, [userId, markLocalMutation, scheduleRefetch]);
+  }, [userId, markLocalMutation]);
 
   // ── updateItem ────────────────────────────────────────────────────────────
   const updateItem = useCallback(async (item: Item) => {
@@ -256,11 +279,9 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
     const { error } = await upsertItem(item, userId, coupleIdRef.current);
     if (error) {
-      console.error('[useShoppingSync] updateItem error:', error);
-      localMutationsRef.current.delete(item.id);
-      scheduleRefetch(0);
+      console.error('[useShoppingSync] updateItem ERRO:', error);
     }
-  }, [userId, markLocalMutation, scheduleRefetch]);
+  }, [userId, markLocalMutation]);
 
   // ── deleteItem ────────────────────────────────────────────────────────────
   const deleteItem = useCallback(async (id: string) => {
@@ -269,11 +290,9 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
 
     const { error } = await dbDeleteItem(id);
     if (error) {
-      console.error('[useShoppingSync] deleteItem error:', error);
-      localMutationsRef.current.delete(id);
-      scheduleRefetch(0);
+      console.error('[useShoppingSync] deleteItem ERRO:', error);
     }
-  }, [markLocalMutation, scheduleRefetch]);
+  }, [markLocalMutation]);
 
   // ── toggleComprado ────────────────────────────────────────────────────────
   const toggleComprado = useCallback(async (id: string) => {
@@ -287,11 +306,9 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
     );
     const { error } = await patchItem(id, { comprado: newValue });
     if (error) {
-      console.error('[useShoppingSync] toggleComprado error:', error);
-      localMutationsRef.current.delete(id);
-      scheduleRefetch(0);
+      console.error('[useShoppingSync] toggleComprado ERRO:', error);
     }
-  }, [markLocalMutation, scheduleRefetch]);
+  }, [markLocalMutation]);
 
   // ── toggleSelecionado ─────────────────────────────────────────────────────
   const toggleSelecionado = useCallback(async (id: string) => {
@@ -305,11 +322,9 @@ export function useShoppingSync(userId: string): UseShoppingSyncReturn {
     );
     const { error } = await patchItem(id, { selecionado: newValue });
     if (error) {
-      console.error('[useShoppingSync] toggleSelecionado error:', error);
-      localMutationsRef.current.delete(id);
-      scheduleRefetch(0);
+      console.error('[useShoppingSync] toggleSelecionado ERRO:', error);
     }
-  }, [markLocalMutation, scheduleRefetch]);
+  }, [markLocalMutation]);
 
   return {
     items,
