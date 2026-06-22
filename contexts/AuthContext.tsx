@@ -103,23 +103,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initialized.current = true;
 
     const init = async () => {
-      // 1. Tentar Supabase primeiro
       if (supabase) {
-        const { data } = await supabase.auth.getSession();
-        if (data.session?.user) {
-          const user = supabaseUserToUser(data.session.user);
-          const session: Session = {
-            user,
-            accessToken: data.session.access_token,
-            expiresAt: (data.session.expires_at ?? 0) * 1000,
-          };
-          saveLocalSession(user, session.accessToken, session.expiresAt);
-          setAuthState({ status: 'authenticated', user, session });
-          return;
-        }
-
-        // Listener para mudanças de sessão do Supabase
-        supabase.auth.onAuthStateChange((_event, sbSession) => {
+        // Registrar listener PRIMEIRO — antes de qualquer getSession
+        // Garante que mudanças de sessão são capturadas sempre
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sbSession) => {
           if (sbSession?.user) {
             const user = supabaseUserToUser(sbSession.user);
             const session: Session = {
@@ -134,16 +121,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setAuthState({ status: 'unauthenticated' });
           }
         });
-      }
 
-      // 2. Fallback: sessão local (modo offline)
-      const local = loadLocalSession();
-      if (local) {
-        setAuthState({ status: 'authenticated', user: local.user, session: local });
-        return;
-      }
+        // Verificar sessão existente
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.user) {
+          const user = supabaseUserToUser(data.session.user);
+          const session: Session = {
+            user,
+            accessToken: data.session.access_token,
+            expiresAt: (data.session.expires_at ?? 0) * 1000,
+          };
+          saveLocalSession(user, session.accessToken, session.expiresAt);
+          setAuthState({ status: 'authenticated', user, session });
+        } else {
+          // Sem sessão Supabase — tentar cache local
+          const local = loadLocalSession();
+          if (local) {
+            setAuthState({ status: 'authenticated', user: local.user, session: local });
+          } else {
+            setAuthState({ status: 'unauthenticated' });
+          }
+        }
 
-      setAuthState({ status: 'unauthenticated' });
+        // Cleanup do listener é feito pelo React quando o componente desmonta
+        return () => subscription.unsubscribe();
+      } else {
+        // Modo offline — usar sessão local
+        const local = loadLocalSession();
+        if (local) {
+          setAuthState({ status: 'authenticated', user: local.user, session: local });
+        } else {
+          setAuthState({ status: 'unauthenticated' });
+        }
+      }
     };
 
     init();

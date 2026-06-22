@@ -179,3 +179,20 @@ $$;
 -- ── 7. Habilitar Realtime na tabela shopping_items ───────────────────────────
 -- Necessário para o canal Supabase Realtime funcionar
 ALTER PUBLICATION supabase_realtime ADD TABLE public.shopping_items;
+
+-- ── 8. REPLICA IDENTITY FULL ─────────────────────────────────────────────────
+-- CRÍTICO: sem isso, o Supabase Realtime não consegue aplicar RLS nos eventos
+-- e o parceiro nunca recebe INSERT/UPDATE/DELETE do outro usuário.
+-- FULL garante que o evento carrega a linha completa (OLD + NEW),
+-- permitindo que o filtro por couple_id funcione corretamente.
+ALTER TABLE public.shopping_items REPLICA IDENTITY FULL;
+
+-- ── 9. Backfill: preencher couple_id nos itens existentes ────────────────────
+-- Itens criados antes do vínculo têm couple_id NULL — sem isso a RLS SELECT
+-- do parceiro não os retorna e o Realtime não os entrega.
+UPDATE public.shopping_items si
+SET couple_id = p.couple_id
+FROM public.profiles p
+WHERE si.user_id = p.id
+  AND p.couple_id IS NOT NULL
+  AND si.couple_id IS NULL;
